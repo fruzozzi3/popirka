@@ -3,8 +3,6 @@ import 'package:flutter/foundation.dart';
 import 'package:my_kopilka/features/savings/data/repository/savings_repository.dart';
 import 'package:my_kopilka/features/savings/models/goal.dart';
 import 'package:my_kopilka/features/savings/models/transaction.dart';
-import 'package:my_kopilka/features/savings/models/statistics.dart';
-import 'package:my_kopilka/features/achievements/models/achievement.dart';
 
 class SavingsViewModel extends ChangeNotifier {
   final SavingsRepository _repository;
