@@ -1,5 +1,3 @@
-// lib/features/savings/ui/screens/goal_details_screen.dart
-
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:my_kopilka/features/savings/models/transaction.dart' as model;
@@ -31,9 +29,10 @@ class _GoalDetailsScreenState extends State<GoalDetailsScreen> {
     });
   }
 
-
   void _showAddTransactionDialog(BuildContext context, {required bool isWithdrawal}) {
     final vm = context.read<SavingsViewModel>();
+    final goal = vm.goals.firstWhere((g) => g.id == widget.goalId);
+    final currencyFormat = NumberFormat.currency(locale: 'ru_RU', symbol: '₽', decimalDigits: 0);
     final amountController = TextEditingController();
     final notesController = TextEditingController();
     final formKey = GlobalKey<FormState>();
@@ -53,7 +52,11 @@ class _GoalDetailsScreenState extends State<GoalDetailsScreen> {
                 keyboardType: TextInputType.number,
                 validator: (value) {
                   if (value!.isEmpty) return 'Введите сумму';
-                  if (int.tryParse(value) == null || int.parse(value) <= 0) return 'Сумма должна быть больше нуля';
+                  final parsedAmount = int.tryParse(value);
+                  if (parsedAmount == null || parsedAmount <= 0) return 'Сумма должна быть больше нуля';
+                  if (isWithdrawal && parsedAmount > goal.currentAmount) {
+                    return 'Нельзя снять больше, чем накоплено (${currencyFormat.format(goal.currentAmount)})';
+                  }
                   return null;
                 },
               ),
@@ -98,22 +101,56 @@ class _GoalDetailsScreenState extends State<GoalDetailsScreen> {
     final progress = goal.targetAmount > 0 ? (goal.currentAmount / goal.targetAmount).clamp(0.0, 1.0) : 0.0;
 
     return Scaffold(
-      appBar: AppBar(title: Text(goal.name)),
+      appBar: AppBar(
+        title: Text(goal.name),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.delete_outline, color: Colors.red),
+            onPressed: () {
+              showDialog(
+                context: context,
+                builder: (context) => AlertDialog(
+                  title: const Text('Удалить цель?'),
+                  content: const Text('Это действие нельзя отменить. Все транзакции для этой цели также будут удалены.'),
+                  actions: [
+                    TextButton(
+                      onPressed: () => Navigator.of(context).pop(),
+                      child: const Text('Отмена'),
+                    ),
+                    ElevatedButton(
+                      onPressed: () {
+                        vm.deleteGoal(widget.goalId).then((_) {
+                          Navigator.of(context).pop(); // Закрыть диалог
+                          Navigator.of(context).pop(); // Вернуться на HomeScreen
+                          vm.fetchGoals(); // Обновить список целей
+                        });
+                      },
+                      style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+                      child: const Text('Удалить'),
+                    ),
+                  ],
+                ),
+              );
+            },
+            tooltip: 'Удалить цель',
+          ),
+        ],
+      ),
       body: Column(
         children: [
           Padding(
             padding: const EdgeInsets.all(16.0),
             child: Column(
               children: [
-                  Text('Накоплено', style: Theme.of(context).textTheme.titleMedium),
-                  Text(currencyFormat.format(goal.currentAmount), style: Theme.of(context).textTheme.displaySmall),
-                  const SizedBox(height: 16),
-                  LinearProgressIndicator(value: progress, minHeight: 10, borderRadius: BorderRadius.circular(5)),
-                  const SizedBox(height: 8),
-                  Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-                    Text('Прогресс: ${(progress * 100).toStringAsFixed(1)}%'),
-                    Text('Цель: ${currencyFormat.format(goal.targetAmount)}'),
-                  ]),
+                Text('Накоплено', style: Theme.of(context).textTheme.titleMedium),
+                Text(currencyFormat.format(goal.currentAmount), style: Theme.of(context).textTheme.displaySmall),
+                const SizedBox(height: 16),
+                LinearProgressIndicator(value: progress, minHeight: 10, borderRadius: BorderRadius.circular(5)),
+                const SizedBox(height: 8),
+                Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+                  Text('Прогресс: ${(progress * 100).toStringAsFixed(1)}%'),
+                  Text('Цель: ${currencyFormat.format(goal.targetAmount)}'),
+                ]),
               ],
             ),
           ),
