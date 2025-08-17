@@ -142,4 +142,96 @@ class SavingsViewModel extends ChangeNotifier {
       case AchievementType.reach100000:
         final maxAmount = _goals.isEmpty 
             ? 0 
-            : _goals.
+            : _goals.map((g) => g.currentAmount).reduce((a, b) => a > b ? a : b);
+        return achievement.copyWith(
+          isUnlocked: maxAmount >= achievement.maxProgress,
+          progress: maxAmount.clamp(0, achievement.maxProgress),
+          unlockedAt: maxAmount >= achievement.maxProgress ? DateTime.now() : null,
+        );
+
+      case AchievementType.completedGoal:
+        final hasCompletedGoal = _goals.any((g) => g.currentAmount >= g.targetAmount);
+        return achievement.copyWith(
+          isUnlocked: hasCompletedGoal,
+          unlockedAt: hasCompletedGoal ? DateTime.now() : null,
+        );
+
+      case AchievementType.bigSaver:
+        // Проверяем, есть ли транзакции больше 5000
+        bool hasBigTransaction = false;
+        for (final goal in _goals) {
+          final transactions = await _repository.getTransactionsForGoal(goal.id!);
+          if (transactions.any((t) => t.amount >= 5000)) {
+            hasBigTransaction = true;
+            break;
+          }
+        }
+        return achievement.copyWith(
+          isUnlocked: hasBigTransaction,
+          unlockedAt: hasBigTransaction ? DateTime.now() : null,
+        );
+
+      // Для streak достижений нужна более сложная логика
+      case AchievementType.streak7days:
+      case AchievementType.streak30days:
+        // Упрощенная реализация - можно улучшить
+        final totalTransactions = _goals.fold<int>(
+          0, 
+          (sum, goal) => sum + goal.currentAmount > 0 ? 1 : 0,
+        );
+        final isUnlocked = totalTransactions >= achievement.maxProgress;
+        return achievement.copyWith(
+          isUnlocked: isUnlocked,
+          progress: totalTransactions.clamp(0, achievement.maxProgress),
+          unlockedAt: isUnlocked ? DateTime.now() : null,
+        );
+
+      default:
+        return achievement;
+    }
+  }
+
+  // Мотивационные сообщения
+  String getMotivationalMessage(Goal goal) {
+    final progress = goal.currentAmount / goal.targetAmount;
+    
+    if (progress >= 1.0) {
+      return "🎉 Поздравляем! Цель достигнута!";
+    } else if (progress >= 0.9) {
+      return "🔥 Почти готово! Осталось совсем чуть-чуть!";
+    } else if (progress >= 0.75) {
+      return "💪 Отличный прогресс! Продолжай в том же духе!";
+    } else if (progress >= 0.5) {
+      return "📈 Половина пути пройдена! Ты молодец!";
+    } else if (progress >= 0.25) {
+      return "🌟 Хорошее начало! Продолжай копить!";
+    } else if (progress > 0) {
+      return "🚀 Отличный старт! Каждый рубль приближает к цели!";
+    } else {
+      return "💡 Время начать копить! Первый шаг самый важный!";
+    }
+  }
+
+  // Дополнительные функции
+  int getTotalSaved() {
+    return _goals.fold(0, (sum, goal) => sum + goal.currentAmount);
+  }
+
+  int getTotalGoals() {
+    return _goals.fold(0, (sum, goal) => sum + goal.targetAmount);
+  }
+
+  double getOverallProgress() {
+    final total = getTotalGoals();
+    final saved = getTotalSaved();
+    return total > 0 ? saved / total : 0.0;
+  }
+
+  List<Goal> getCompletedGoals() {
+    return _goals.where((g) => g.currentAmount >= g.targetAmount).toList();
+  }
+
+  List<Goal> getActiveGoals() {
+    return _goals.where((g) => g.currentAmount < g.targetAmount).toList();
+  }
+}
