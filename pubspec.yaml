@@ -1,7 +1,7 @@
 name: my_kopilka
-description: Виртуальный трекер физической копилки (Flutter).
+description: Продвинутый трекер физической копилки с красивым дизайном и полезными функциями
 publish_to: "none"
-version: 1.0.0+1
+version: 2.0.0+2
 
 environment:
   sdk: ">=3.3.0 <4.0.0"
@@ -9,11 +9,26 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+  
+  # UI и навигация
   cupertino_icons: ^1.0.6
+  
+  # Хранение данных
   sqflite: ^2.3.3
   path_provider: ^2.1.4
+  shared_preferences: ^2.2.2
+  
+  # Форматирование и локализация
   intl: ^0.19.0
+  
+  # Управление состоянием
   provider: ^6.1.2
+  
+  # Работа с файлами и экспорт
+  path: ^1.8.3
+  
+  # Анимации (если понадобятся)
+  animations: ^2.0.11
 
 dev_dependencies:
   flutter_test:
@@ -22,3 +37,11 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+  
+  # Добавляем собственные шрифты если нужно
+  # fonts:
+  #   - family: CustomFont
+  #     fonts:
+  #       - asset: fonts/CustomFont-Regular.ttf
+  #       - asset: fonts/CustomFont-Bold.ttf
+  #         weight: 700
