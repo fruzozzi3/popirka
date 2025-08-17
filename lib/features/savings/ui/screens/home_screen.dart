@@ -24,6 +24,19 @@ class HomeScreen extends StatelessWidget {
             pinned: true,
             elevation: 0,
             backgroundColor: Colors.transparent,
+            actions: [
+              IconButton(
+                icon: const Icon(Icons.settings, color: Colors.white),
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => const SettingsScreen(),
+                    ),
+                  );
+                 },
+                ),
+              ],
             flexibleSpace: Container(
               decoration: BoxDecoration(
                 gradient: isDark ? AppGradients.cardDark : AppGradients.primary,
