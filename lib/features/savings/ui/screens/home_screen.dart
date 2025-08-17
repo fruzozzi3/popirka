@@ -1,9 +1,10 @@
-// lib/features/savings/ui/screens/home_screen.dart
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:my_kopilka/features/savings/models/goal.dart';
 import 'package:my_kopilka/features/savings/ui/screens/goal_details_screen.dart';
 import 'package:my_kopilka/features/savings/viewmodels/savings_view_model.dart';
+import 'package:my_kopilka/features/settings/viewmodels/settings_view_model.dart';
+import 'package:my_kopilka/features/settings/ui/screens/settings_screen.dart';
 import 'package:my_kopilka/theme/colors.dart';
 import 'package:provider/provider.dart';
 
@@ -13,6 +14,7 @@ class HomeScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final vm = context.watch<SavingsViewModel>();
+    final settingsVM = context.watch<SettingsViewModel>();
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Scaffold(
@@ -20,39 +22,39 @@ class HomeScreen extends StatelessWidget {
         slivers: [
           // Красивый AppBar с градиентом
           SliverAppBar(
-  expandedHeight: 120,
-  pinned: true,
-  elevation: 0,
-  backgroundColor: Colors.transparent,
-  flexibleSpace: Container(
-    decoration: BoxDecoration(
-      gradient: isDark ? AppGradients.cardDark : AppGradients.primary,
-    ),
-    child: const FlexibleSpaceBar(
-      title: Text(
-        'Мои Копилки',
-        style: TextStyle(
-          color: Colors.white,
-          fontWeight: FontWeight.bold,
-        ),
-      ),
-      centerTitle: true,
-    ),
-  ),
-  actions: [
-    IconButton(
-      icon: const Icon(Icons.settings, color: Colors.white),
-      onPressed: () {
-        Navigator.of(context).push(
-          MaterialPageRoute(
-            builder: (_) => const SettingsScreen(),
+            expandedHeight: 120,
+            pinned: true,
+            elevation: 0,
+            backgroundColor: Colors.transparent,
+            flexibleSpace: Container(
+              decoration: BoxDecoration(
+                gradient: isDark ? AppGradients.cardDark : AppGradients.primary,
+              ),
+              child: const FlexibleSpaceBar(
+                title: Text(
+                  'Мои Копилки',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                centerTitle: true,
+              ),
+            ),
+            actions: [
+              IconButton(
+                icon: const Icon(Icons.settings, color: Colors.white),
+                onPressed: () {
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => SettingsScreen(), // Removed 'const'
+                    ),
+                  );
+                },
+                tooltip: 'Настройки',
+              ),
+            ],
           ),
-        );
-      },
-      tooltip: 'Настройки',
-    ),
-  ],
-),
 
           // Контент
           SliverPadding(
@@ -68,21 +70,21 @@ class HomeScreen extends StatelessWidget {
                           // Общая статистика
                           _buildOverallStatsCard(context, vm, isDark),
                           const SizedBox(height: 16),
-                          
+
                           // Заголовок целей
                           _buildSectionHeader(context, 'Мои цели', vm.goals.length),
                           const SizedBox(height: 8),
-                          
+
                           // Список целей
                           ...vm.goals.map((goal) => GoalCard(goal: goal)).toList(),
-                          
+
                           const SizedBox(height: 80), // Отступ для FAB
                         ]),
                       ),
           ),
         ],
       ),
-      
+
       floatingActionButton: _buildFAB(context, vm),
     );
   }
@@ -164,7 +166,7 @@ class HomeScreen extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 16),
-          
+
           Text(
             currencyFormat.format(totalSaved),
             style: const TextStyle(
@@ -176,9 +178,9 @@ class HomeScreen extends StatelessWidget {
             'из ${currencyFormat.format(totalGoals)}',
             style: Theme.of(context).textTheme.bodyLarge,
           ),
-          
+
           const SizedBox(height: 20),
-          
+
           ClipRRect(
             borderRadius: BorderRadius.circular(8),
             child: LinearProgressIndicator(
@@ -190,9 +192,9 @@ class HomeScreen extends StatelessWidget {
               ),
             ),
           ),
-          
+
           const SizedBox(height: 16),
-          
+
           Row(
             children: [
               Expanded(
@@ -364,6 +366,7 @@ class GoalCard extends StatelessWidget {
     final progress = goal.targetAmount > 0 ? (goal.currentAmount / goal.targetAmount).clamp(0.0, 1.0) : 0.0;
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final vm = context.read<SavingsViewModel>();
+    final settingsVM = context.read<SettingsViewModel>();
     final motivationalMessage = vm.getMotivationalMessage(goal);
     final isCompleted = goal.currentAmount >= goal.targetAmount;
 
@@ -504,7 +507,7 @@ class GoalCard extends StatelessWidget {
                   Wrap(
                     spacing: 8,
                     runSpacing: 8,
-                    children: [100, 200, 500, 1000].map((amount) {
+                    children: settingsVM.settings.quickAddPresets.map((amount) {
                       return SizedBox(
                         height: 36,
                         child: OutlinedButton(
