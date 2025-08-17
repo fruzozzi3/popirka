@@ -6,7 +6,6 @@ import 'package:my_kopilka/features/savings/ui/screens/goal_details_screen.dart'
 import 'package:my_kopilka/features/savings/viewmodels/savings_view_model.dart';
 import 'package:my_kopilka/theme/colors.dart';
 import 'package:provider/provider.dart';
-import 'package:my_kopilka/features/settings/ui/screens/settings_screen.dart';
 
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
@@ -25,19 +24,6 @@ class HomeScreen extends StatelessWidget {
             pinned: true,
             elevation: 0,
             backgroundColor: Colors.transparent,
-            actions: [
-              IconButton(
-                icon: const Icon(Icons.settings, color: Colors.white),
-                onPressed: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => const SettingsScreen(),
-                    ),
-                  );
-                 },
-                ),
-              ],
             flexibleSpace: Container(
               decoration: BoxDecoration(
                 gradient: isDark ? AppGradients.cardDark : AppGradients.primary,
