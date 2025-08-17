@@ -20,26 +20,39 @@ class HomeScreen extends StatelessWidget {
         slivers: [
           // Красивый AppBar с градиентом
           SliverAppBar(
-            expandedHeight: 120,
-            pinned: true,
-            elevation: 0,
-            backgroundColor: Colors.transparent,
-            flexibleSpace: Container(
-              decoration: BoxDecoration(
-                gradient: isDark ? AppGradients.cardDark : AppGradients.primary,
-              ),
-              child: const FlexibleSpaceBar(
-                title: Text(
-                  'Мои Копилки',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                centerTitle: true,
-              ),
-            ),
+  expandedHeight: 120,
+  pinned: true,
+  elevation: 0,
+  backgroundColor: Colors.transparent,
+  flexibleSpace: Container(
+    decoration: BoxDecoration(
+      gradient: isDark ? AppGradients.cardDark : AppGradients.primary,
+    ),
+    child: const FlexibleSpaceBar(
+      title: Text(
+        'Мои Копилки',
+        style: TextStyle(
+          color: Colors.white,
+          fontWeight: FontWeight.bold,
+        ),
+      ),
+      centerTitle: true,
+    ),
+  ),
+  actions: [
+    IconButton(
+      icon: const Icon(Icons.settings, color: Colors.white),
+      onPressed: () {
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) => const SettingsScreen(),
           ),
+        );
+      },
+      tooltip: 'Настройки',
+    ),
+  ],
+),
 
           // Контент
           SliverPadding(
