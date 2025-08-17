@@ -4,7 +4,7 @@ import 'package:my_kopilka/features/savings/models/goal.dart';
 import 'package:my_kopilka/features/savings/ui/screens/goal_details_screen.dart';
 import 'package:my_kopilka/features/savings/viewmodels/savings_view_model.dart';
 import 'package:my_kopilka/features/settings/viewmodels/settings_view_model.dart';
-import 'package:my_kopilka/features/settings/ui/screens/settings_screen.dart';
+import 'package:my_kopilka/features/savings/ui/screens/settings_screen.dart';
 import 'package:my_kopilka/theme/colors.dart';
 import 'package:provider/provider.dart';
 
