@@ -1,6 +1,6 @@
 // lib/features/achievements/ui/screens/achievements_screen.dart
 import 'package:flutter/material.dart';
-import 'package:my_kopilka/features/achievements/models/achievement.dart';
+import 'package:my_kopilka/features/savings/models/achievement.dart';
 import 'package:my_kopilka/features/savings/viewmodels/savings_view_model.dart';
 import 'package:my_kopilka/theme/colors.dart';
 import 'package:provider/provider.dart';
