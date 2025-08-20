@@ -3,6 +3,8 @@ import 'package:flutter/foundation.dart';
 import 'package:my_kopilka/features/savings/data/repository/savings_repository.dart';
 import 'package:my_kopilka/features/savings/models/goal.dart';
 import 'package:my_kopilka/features/savings/models/transaction.dart';
+import 'package:my_kopilka/features/savings/models/achievement.dart';
+import 'package:my_kopilka/features/savings/models/statistics.dart';
 
 class SavingsViewModel extends ChangeNotifier {
   final SavingsRepository _repository;
@@ -11,60 +13,123 @@ class SavingsViewModel extends ChangeNotifier {
   List<Goal> _goals = [];
   List<Goal> get goals => _goals;
 
+  List<Achievement> _achievements = [];
+  List<Achievement> get achievements => _achievements;
+
   bool _isLoading = false;
   bool get isLoading => _isLoading;
 
   Future<void> init() async {
-    await fetchGoals();
+    try {
+      _achievements = Achievement.getAllAchievements();
+      await fetchGoals();
+    } catch (e) {
+      debugPrint('Error initializing SavingsViewModel: $e');
+      _isLoading = false;
+      notifyListeners();
+    }
   }
 
   Future<void> fetchGoals() async {
-    _isLoading = true;
-    notifyListeners();
+    try {
+      _isLoading = true;
+      notifyListeners();
 
-    final fetchedGoals = await _repository.getAllGoals();
-    for (var goal in fetchedGoals) {
-      goal.currentAmount = await _repository.getCurrentSumForGoal(goal.id!);
+      final fetchedGoals = await _repository.getAllGoals();
+      for (var goal in fetchedGoals) {
+        goal.currentAmount = await _repository.getCurrentSumForGoal(goal.id!);
+      }
+      _goals = fetchedGoals;
+
+      _isLoading = false;
+      notifyListeners();
+    } catch (e) {
+      debugPrint('Error fetching goals: $e');
+      _isLoading = false;
+      notifyListeners();
     }
-    _goals = fetchedGoals;
-
-    _isLoading = false;
-    notifyListeners();
   }
 
   Future<void> addGoal(String name, int targetAmount) async {
-    final newGoal = Goal(
-      name: name,
-      targetAmount: targetAmount,
-      createdAt: DateTime.now(),
-    );
-    await _repository.addGoal(newGoal);
-    await fetchGoals();
+    try {
+      final newGoal = Goal(
+        name: name,
+        targetAmount: targetAmount,
+        createdAt: DateTime.now(),
+      );
+      await _repository.addGoal(newGoal);
+      await fetchGoals();
+    } catch (e) {
+      debugPrint('Error adding goal: $e');
+    }
   }
 
   Future<void> updateGoal(Goal goal) async {
-    await _repository.updateGoal(goal);
-    await fetchGoals();
+    try {
+      await _repository.updateGoal(goal);
+      await fetchGoals();
+    } catch (e) {
+      debugPrint('Error updating goal: $e');
+    }
   }
 
   Future<void> deleteGoal(int goalId) async {
-    await _repository.deleteGoal(goalId);
-    await fetchGoals();
+    try {
+      await _repository.deleteGoal(goalId);
+      await fetchGoals();
+    } catch (e) {
+      debugPrint('Error deleting goal: $e');
+    }
   }
 
   Future<void> addTransaction(int goalId, int amount, {String? notes}) async {
-    final transaction = Transaction(
-      goalId: goalId,
-      amount: amount,
-      notes: notes,
-      createdAt: DateTime.now(),
-    );
-    await _repository.addTransaction(transaction);
-    await fetchGoals();
+    try {
+      final transaction = Transaction(
+        goalId: goalId,
+        amount: amount,
+        notes: notes,
+        createdAt: DateTime.now(),
+      );
+      await _repository.addTransaction(transaction);
+      await fetchGoals();
+    } catch (e) {
+      debugPrint('Error adding transaction: $e');
+    }
   }
 
-  Future<List<Transaction>> getTransactionsForGoal(int goalId) {
-    return _repository.getTransactionsForGoal(goalId);
+  Future<List<Transaction>> getTransactionsForGoal(int goalId) async {
+    try {
+      return await _repository.getTransactionsForGoal(goalId);
+    } catch (e) {
+      debugPrint('Error getting transactions: $e');
+      return [];
+    }
+  }
+
+  Future<SavingsStatistics> getStatisticsForGoal(int goalId) async {
+    try {
+      final transactions = await getTransactionsForGoal(goalId);
+      
+      final deposits = transactions.where((t) => t.amount > 0).toList();
+      final withdrawals = transactions.where((t) => t.amount < 0).toList();
+      
+      final totalDeposits = deposits.fold(0, (sum, t) => sum + t.amount);
+      final totalWithdrawals = withdrawals.fold(0, (sum, t) => sum + t.amount.abs());
+      
+      return SavingsStatistics(
+        totalDeposits: totalDeposits,
+        totalWithdrawals: totalWithdrawals,
+        netAmount: totalDeposits - totalWithdrawals,
+        averageDeposit: deposits.isEmpty ? 0 : totalDeposits / deposits.length,
+        averageWithdrawal: withdrawals.isEmpty ? 0 : totalWithdrawals / withdrawals.length,
+        totalTransactions: transactions.length,
+        firstTransaction: transactions.isEmpty ? null : transactions.last.createdAt,
+        lastTransaction: transactions.isEmpty ? null : transactions.first.createdAt,
+      );
+    } catch (e) {
+      debugPrint('Error getting statistics: $e');
+      return SavingsStatistics();
+    }
   }
 
   // Мотивационные сообщения
@@ -126,17 +191,4 @@ class SavingsViewModel extends ChangeNotifier {
   List<Goal> getActiveGoals() {
     return _goals.where((g) => g.currentAmount < g.targetAmount).toList();
   }
-}
-
-// Временные модели
-class PredictionModel {
-  final int dailyAmount;
-  final int daysToGoal;
-  final DateTime estimatedDate;
-
-  PredictionModel({
-    required this.dailyAmount,
-    required this.daysToGoal,
-    required this.estimatedDate,
-  });
 }
