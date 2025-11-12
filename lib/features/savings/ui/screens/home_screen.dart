@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:my_kopilka/features/savings/models/goal.dart';
+import 'package:my_kopilka/features/savings/ui/screens/achievements_screen.dart';
 import 'package:my_kopilka/features/savings/ui/screens/goal_details_screen.dart';
+import 'package:my_kopilka/features/savings/ui/screens/statistics_screen.dart';
 import 'package:my_kopilka/features/savings/viewmodels/savings_view_model.dart';
 import 'package:my_kopilka/features/settings/viewmodels/settings_view_model.dart';
 import 'package:my_kopilka/features/savings/ui/screens/settings_screen.dart';
@@ -18,8 +20,26 @@ class HomeScreen extends StatelessWidget {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Scaffold(
-      body: CustomScrollView(
-        slivers: [
+      extendBody: true,
+      body: DecoratedBox(
+        decoration: BoxDecoration(
+          gradient: isDark
+              ? const LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [Color(0xFF0F172A), Color(0xFF111827)],
+                )
+              : const LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [Color(0xFFF5F7FF), Color(0xFFFFFFFF)],
+                ),
+        ),
+        child: SafeArea(
+          top: false,
+          bottom: false,
+          child: CustomScrollView(
+            slivers: [
           // Красивый AppBar с градиентом
           SliverAppBar(
             expandedHeight: 120,
@@ -43,11 +63,22 @@ class HomeScreen extends StatelessWidget {
             ),
             actions: [
               IconButton(
+                icon: const Icon(Icons.emoji_events_outlined, color: Colors.white),
+                onPressed: () {
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => const AchievementsScreen(),
+                    ),
+                  );
+                },
+                tooltip: 'Достижения',
+              ),
+              IconButton(
                 icon: const Icon(Icons.settings, color: Colors.white),
                 onPressed: () {
                   Navigator.of(context).push(
                     MaterialPageRoute(
-                      builder: (_) => SettingsScreen(), // Removed 'const'
+                      builder: (_) => const SettingsScreen(),
                     ),
                   );
                 },
@@ -56,35 +87,33 @@ class HomeScreen extends StatelessWidget {
             ],
           ),
 
-          // Контент
-          SliverPadding(
-            padding: const EdgeInsets.all(16),
-            sliver: vm.isLoading
-                ? const SliverFillRemaining(
-                    child: Center(child: CircularProgressIndicator()),
-                  )
-                : vm.goals.isEmpty
-                    ? _buildEmptyState(context, isDark)
-                    : SliverList(
-                        delegate: SliverChildListDelegate([
-                          // Общая статистика
-                          _buildOverallStatsCard(context, vm, isDark),
-                          const SizedBox(height: 16),
+              // Контент
+              SliverPadding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+                sliver: vm.isLoading
+                    ? const SliverFillRemaining(
+                        child: Center(child: CircularProgressIndicator()),
+                      )
+                    : vm.goals.isEmpty
+                        ? _buildEmptyState(context, isDark)
+                        : SliverList(
+                            delegate: SliverChildListDelegate([
+                              _buildOverallStatsCard(context, vm, isDark),
+                              const SizedBox(height: 20),
 
-                          // Заголовок целей
-                          _buildSectionHeader(context, 'Мои цели', vm.goals.length),
-                          const SizedBox(height: 8),
+                              _buildSectionHeader(context, 'Мои цели', vm.goals.length),
+                              const SizedBox(height: 12),
 
-                          // Список целей
-                          ...vm.goals.map((goal) => GoalCard(goal: goal)).toList(),
+                              ...vm.goals.map((goal) => GoalCard(goal: goal)).toList(),
 
-                          const SizedBox(height: 80), // Отступ для FAB
-                        ]),
-                      ),
+                              const SizedBox(height: 96),
+                            ]),
+                          ),
+              ),
+            ],
           ),
-        ],
+        ),
       ),
-
       floatingActionButton: _buildFAB(context, vm),
     );
   }
@@ -109,16 +138,35 @@ class HomeScreen extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 24),
-            Text(
-              'Создайте свою первую копилку!',
-              style: Theme.of(context).textTheme.headlineMedium,
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 12),
-            Text(
-              'Поставьте цель и начните копить.\nКаждый рубль приближает к мечте!',
-              style: Theme.of(context).textTheme.bodyLarge,
-              textAlign: TextAlign.center,
+            Container(
+              margin: const EdgeInsets.only(top: 24),
+              padding: const EdgeInsets.all(24),
+              decoration: BoxDecoration(
+                color: (isDark ? Colors.white24 : Colors.white).withOpacity(isDark ? 0.15 : 0.92),
+                borderRadius: BorderRadius.circular(24),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(isDark ? 0.35 : 0.08),
+                    blurRadius: 24,
+                    offset: const Offset(0, 16),
+                  ),
+                ],
+              ),
+              child: Column(
+                children: [
+                  Text(
+                    'Создайте свою первую копилку!',
+                    style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w700),
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 12),
+                  Text(
+                    'Поставьте цель и начните копить. Каждый рубль приближает к мечте!',
+                    style: Theme.of(context).textTheme.bodyLarge?.copyWith(height: 1.4),
+                    textAlign: TextAlign.center,
+                  ),
+                ],
+              ),
             ),
           ],
         ),
@@ -134,8 +182,18 @@ class HomeScreen extends StatelessWidget {
 
     return Container(
       decoration: BoxDecoration(
-        gradient: isDark ? AppGradients.cardDark : AppGradients.card,
-        borderRadius: BorderRadius.circular(24),
+        gradient: isDark
+            ? const LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [Color(0xFF1F2937), Color(0xFF312E81)],
+              )
+            : const LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [Color(0xFF6366F1), Color(0xFF8B5CF6)],
+              ),
+        borderRadius: BorderRadius.circular(32),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withOpacity(0.1),
@@ -144,7 +202,7 @@ class HomeScreen extends StatelessWidget {
           ),
         ],
       ),
-      padding: const EdgeInsets.all(24),
+      padding: const EdgeInsets.all(28),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -153,7 +211,10 @@ class HomeScreen extends StatelessWidget {
             children: [
               Text(
                 'Общий прогресс',
-                style: Theme.of(context).textTheme.titleLarge,
+                style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w700,
+                    ),
               ),
               Text(
                 '${(progress * 100).toStringAsFixed(1)}%',
@@ -169,14 +230,16 @@ class HomeScreen extends StatelessWidget {
 
           Text(
             currencyFormat.format(totalSaved),
-            style: const TextStyle(
-              fontSize: 32,
-              fontWeight: FontWeight.bold,
-            ),
+            style: Theme.of(context).textTheme.displaySmall?.copyWith(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w700,
+                ),
           ),
           Text(
             'из ${currencyFormat.format(totalGoals)}',
-            style: Theme.of(context).textTheme.bodyLarge,
+            style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                  color: Colors.white.withOpacity(0.8),
+                ),
           ),
 
           const SizedBox(height: 20),
@@ -186,7 +249,7 @@ class HomeScreen extends StatelessWidget {
             child: LinearProgressIndicator(
               value: progress,
               minHeight: 12,
-              backgroundColor: (isDark ? DarkColors.border : LightColors.border).withOpacity(0.3),
+              backgroundColor: Colors.white.withOpacity(0.25),
               valueColor: AlwaysStoppedAnimation<Color>(
                 isDark ? DarkColors.primary : LightColors.primary,
               ),
@@ -225,28 +288,26 @@ class HomeScreen extends StatelessWidget {
 
   Widget _buildStatItem(BuildContext context, String label, String value, IconData icon, bool isDark) {
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
-        color: (isDark ? DarkColors.surface : LightColors.background).withOpacity(0.5),
-        borderRadius: BorderRadius.circular(12),
+        color: (isDark ? DarkColors.surface : Colors.white).withOpacity(isDark ? 0.45 : 0.85),
+        borderRadius: BorderRadius.circular(20),
       ),
       child: Column(
         children: [
           Icon(
             icon,
             color: isDark ? DarkColors.primary : LightColors.primary,
+            size: 28,
           ),
           const SizedBox(height: 8),
           Text(
             value,
-            style: const TextStyle(
-              fontSize: 20,
-              fontWeight: FontWeight.bold,
-            ),
+            style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
           ),
           Text(
             label,
-            style: Theme.of(context).textTheme.bodySmall,
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(height: 1.3),
             textAlign: TextAlign.center,
           ),
         ],
@@ -262,14 +323,15 @@ class HomeScreen extends StatelessWidget {
           title,
           style: Theme.of(context).textTheme.titleLarge?.copyWith(
             fontWeight: FontWeight.bold,
+            letterSpacing: 0.2,
           ),
         ),
         if (count > 0)
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
             decoration: BoxDecoration(
-              color: Theme.of(context).primaryColor.withOpacity(0.1),
-              borderRadius: BorderRadius.circular(12),
+              color: Theme.of(context).primaryColor.withOpacity(0.12),
+              borderRadius: BorderRadius.circular(14),
             ),
             child: Text(
               count.toString(),
@@ -372,165 +434,228 @@ class GoalCard extends StatelessWidget {
 
     return Container(
       margin: const EdgeInsets.only(bottom: 16),
-      child: Card(
-        child: InkWell(
-          onTap: () {
-            Navigator.of(context).push(
-              MaterialPageRoute(
-                builder: (_) => GoalDetailsScreen(goalId: goal.id!),
-              ),
-            );
-          },
-          borderRadius: BorderRadius.circular(20),
-          child: Padding(
-            padding: const EdgeInsets.all(20),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // Заголовок
-                Text(
-                  goal.name,
-                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-
-                const SizedBox(height: 16),
-
-                // Мотивационное сообщение
-                if (motivationalMessage.isNotEmpty)
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: (isDark ? DarkColors.primary : LightColors.primary).withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(
-                        color: (isDark ? DarkColors.primary : LightColors.primary).withOpacity(0.3),
-                      ),
-                    ),
-                    child: Text(
-                      motivationalMessage,
-                      style: TextStyle(
-                        color: isDark ? DarkColors.primary : LightColors.primary,
-                        fontWeight: FontWeight.w600,
-                      ),
-                      textAlign: TextAlign.center,
-                    ),
-                  ),
-
-                const SizedBox(height: 16),
-
-                // Прогресс
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Накоплено',
-                          style: Theme.of(context).textTheme.bodyMedium,
-                        ),
-                        Text(
-                          currencyFormat.format(goal.currentAmount),
-                          style: const TextStyle(
-                            fontSize: 24,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ],
-                    ),
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.end,
-                      children: [
-                        Text(
-                          'Цель',
-                          style: Theme.of(context).textTheme.bodyMedium,
-                        ),
-                        Text(
-                          currencyFormat.format(goal.targetAmount),
-                          style: Theme.of(context).textTheme.titleMedium,
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-
-                const SizedBox(height: 16),
-
-                // Прогресс бар
-                Column(
-                  children: [
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Text(
-                          '${(progress * 100).toStringAsFixed(1)}%',
-                          style: const TextStyle(fontWeight: FontWeight.w600),
-                        ),
-                        if (!isCompleted)
-                          Text(
-                            'Осталось: ${currencyFormat.format(goal.targetAmount - goal.currentAmount)}',
-                            style: Theme.of(context).textTheme.bodyMedium,
-                          ),
-                      ],
-                    ),
-                    const SizedBox(height: 8),
-                    TweenAnimationBuilder<double>(
-                      tween: Tween<double>(begin: 0, end: progress),
-                      duration: const Duration(milliseconds: 800),
-                      curve: Curves.easeOutCubic,
-                      builder: (context, value, _) {
-                        return ClipRRect(
-                          borderRadius: BorderRadius.circular(8),
-                          child: LinearProgressIndicator(
-                            value: value,
-                            minHeight: 12,
-                            backgroundColor: (isDark ? DarkColors.border : LightColors.border).withOpacity(0.3),
-                            valueColor: AlwaysStoppedAnimation<Color>(
-                              isCompleted
-                                  ? (isDark ? DarkColors.success : LightColors.success)
-                                  : (isDark ? DarkColors.primary : LightColors.primary),
-                            ),
-                          ),
-                        );
-                      },
-                    ),
-                  ],
-                ),
-
-                const SizedBox(height: 16),
-
-                // Кнопки быстрого пополнения
-                if (!isCompleted)
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: settingsVM.settings.quickAddPresets.map((amount) {
-                      return SizedBox(
-                        height: 36,
-                        child: OutlinedButton(
-                          onPressed: () => vm.addTransaction(goal.id!, amount),
-                          style: OutlinedButton.styleFrom(
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(18),
-                            ),
-                            padding: const EdgeInsets.symmetric(horizontal: 16),
-                            side: BorderSide(
-                              color: (isDark ? DarkColors.primary : LightColors.primary).withOpacity(0.5),
-                            ),
-                          ),
-                          child: Text(
-                            '+${amount} ₽',
-                            style: const TextStyle(fontWeight: FontWeight.w600),
-                          ),
-                        ),
-                      );
-                    }).toList(),
-                  ),
-              ],
+      child: InkWell(
+        onTap: () {
+          Navigator.of(context).push(
+            MaterialPageRoute(
+              builder: (_) => GoalDetailsScreen(goalId: goal.id!),
             ),
+          );
+        },
+        borderRadius: BorderRadius.circular(28),
+        child: Container(
+          decoration: BoxDecoration(
+            gradient: isCompleted
+                ? const LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [Color(0xFF22C55E), Color(0xFF0EA5E9)],
+                  )
+                : const LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [Color(0xFF312E81), Color(0xFF6366F1)],
+                  ),
+            borderRadius: BorderRadius.circular(28),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(isDark ? 0.45 : 0.18),
+                blurRadius: 24,
+                offset: const Offset(0, 18),
+              ),
+            ],
+          ),
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                goal.name,
+                style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w700,
+                    ),
+              ),
+
+              const SizedBox(height: 16),
+
+              if (motivationalMessage.isNotEmpty)
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.18),
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  child: Text(
+                    motivationalMessage,
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w600,
+                        ),
+                    textAlign: TextAlign.center,
+                  ),
+                ),
+
+              if (motivationalMessage.isNotEmpty) const SizedBox(height: 16),
+
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Накоплено',
+                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                              color: Colors.white70,
+                            ),
+                      ),
+                      Text(
+                        currencyFormat.format(goal.currentAmount),
+                        style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                              color: Colors.white,
+                              fontWeight: FontWeight.w700,
+                            ),
+                      ),
+                    ],
+                  ),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      Text(
+                        'Цель',
+                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                              color: Colors.white70,
+                            ),
+                      ),
+                      Text(
+                        currencyFormat.format(goal.targetAmount),
+                        style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                              color: Colors.white,
+                            ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+
+              const SizedBox(height: 16),
+
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    '${(progress * 100).toStringAsFixed(1)}%',
+                    style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w600,
+                        ),
+                  ),
+                  if (!isCompleted)
+                    Text(
+                      'Осталось: ${currencyFormat.format(goal.targetAmount - goal.currentAmount)}',
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                            color: Colors.white70,
+                          ),
+                    ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              TweenAnimationBuilder<double>(
+                tween: Tween<double>(begin: 0, end: progress),
+                duration: const Duration(milliseconds: 800),
+                curve: Curves.easeOutCubic,
+                builder: (context, value, _) {
+                  return ClipRRect(
+                    borderRadius: BorderRadius.circular(10),
+                    child: LinearProgressIndicator(
+                      value: value,
+                      minHeight: 12,
+                      backgroundColor: Colors.white24,
+                      valueColor: AlwaysStoppedAnimation<Color>(
+                        isCompleted
+                            ? (isDark ? DarkColors.success : LightColors.success)
+                            : Colors.white,
+                      ),
+                    ),
+                  );
+                },
+              ),
+
+              const SizedBox(height: 20),
+
+              if (goal.id != null)
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        onPressed: () {
+                          Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder: (_) => GoalDetailsScreen(goalId: goal.id!),
+                            ),
+                          );
+                        },
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: Colors.white,
+                          side: const BorderSide(color: Colors.white38),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(16),
+                          ),
+                        ),
+                        icon: const Icon(Icons.history),
+                        label: const Text('История'),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: FilledButton.icon(
+                        onPressed: () {
+                          Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder: (_) => StatisticsScreen(goalId: goal.id!),
+                            ),
+                          );
+                        },
+                        style: FilledButton.styleFrom(
+                          backgroundColor: Colors.white,
+                          foregroundColor: isCompleted ? DarkColors.primary : LightColors.primary,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(16),
+                          ),
+                        ),
+                        icon: const Icon(Icons.bar_chart_rounded),
+                        label: const Text('Статистика'),
+                      ),
+                    ),
+                  ],
+                ),
+
+              if (goal.id != null) const SizedBox(height: 16),
+
+              if (!isCompleted)
+                Wrap(
+                  spacing: 10,
+                  runSpacing: 10,
+                  children: settingsVM.settings.quickAddPresets.map((amount) {
+                    return ChoiceChip(
+                      label: Text('+${amount} ₽'),
+                      selected: false,
+                      onSelected: (_) => vm.addTransaction(goal.id!, amount),
+                      backgroundColor: Colors.white.withOpacity(0.18),
+                      labelStyle: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w600,
+                          ),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      side: const BorderSide(color: Colors.white24),
+                    );
+                  }).toList(),
+                ),
+            ],
           ),
         ),
       ),
