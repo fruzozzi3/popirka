@@ -1,4 +1,6 @@
 // lib/features/savings/ui/screens/statistics_screen.dart
+import 'dart:ui';
+
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:my_kopilka/features/savings/models/goal.dart';
@@ -18,19 +20,56 @@ class StatisticsScreen extends StatefulWidget {
 }
 
 class _StatisticsScreenState extends State<StatisticsScreen> {
-  late Future<SavingsStatistics> _statisticsFuture;
+  Future<SavingsStatistics>? _statisticsFuture;
+  int? _lastKnownAmount;
+  int? _lastKnownTarget;
+  bool _bootstrapped = false;
 
   @override
-  void initState() {
-    super.initState();
-    final vm = Provider.of<SavingsViewModel>(context, listen: false);
-    _statisticsFuture = vm.getStatisticsForGoal(widget.goalId);
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_bootstrapped) return;
+
+    final vm = context.read<SavingsViewModel>();
+    final goal = _resolveGoal(vm.goals, widget.goalId);
+    if (goal != null) {
+      _statisticsFuture = vm.getStatisticsForGoal(goal.id!);
+      _lastKnownAmount = goal.currentAmount;
+      _lastKnownTarget = goal.targetAmount;
+    }
+    _bootstrapped = true;
   }
 
-  void _loadStatistics() {
-    final vm = Provider.of<SavingsViewModel>(context, listen: false);
+  Goal? _resolveGoal(List<Goal> goals, int id) {
+    for (final goal in goals) {
+      if (goal.id == id) return goal;
+    }
+    return null;
+  }
+
+  Future<void> _handleRefresh() async {
+    final vm = context.read<SavingsViewModel>();
+    final goal = _resolveGoal(vm.goals, widget.goalId);
+    if (goal == null) return;
+
+    final future = vm.getStatisticsForGoal(goal.id!);
     setState(() {
-      _statisticsFuture = vm.getStatisticsForGoal(widget.goalId);
+      _statisticsFuture = future;
+      _lastKnownAmount = goal.currentAmount;
+      _lastKnownTarget = goal.targetAmount;
+    });
+    await future;
+  }
+
+  void _scheduleStatisticsReload(Goal goal) {
+    if (!mounted) return;
+
+    final vm = context.read<SavingsViewModel>();
+    final future = vm.getStatisticsForGoal(goal.id!);
+    setState(() {
+      _statisticsFuture = future;
+      _lastKnownAmount = goal.currentAmount;
+      _lastKnownTarget = goal.targetAmount;
     });
   }
 
@@ -39,12 +78,7 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final vm = context.watch<SavingsViewModel>();
     final settings = context.watch<SettingsViewModel>();
-    Goal? goal;
-    try {
-      goal = vm.goals.firstWhere((g) => g.id == widget.goalId);
-    } catch (_) {
-      goal = null;
-    }
+    final goal = _resolveGoal(vm.goals, widget.goalId);
 
     if (goal == null) {
       return Scaffold(
@@ -57,7 +91,17 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
       );
     }
 
-    final predictions = settings.settings.showPredictions ? vm.getPredictions(goal) : <PredictionModel>[];
+    if ((_lastKnownAmount != goal.currentAmount || _lastKnownTarget != goal.targetAmount) &&
+        WidgetsBinding.instance != null) {
+      _lastKnownAmount = goal.currentAmount;
+      _lastKnownTarget = goal.targetAmount;
+      WidgetsBinding.instance.addPostFrameCallback((_) => _scheduleStatisticsReload(goal));
+    }
+
+    final predictions =
+        settings.settings.showPredictions ? vm.getPredictions(goal) : <PredictionModel>[];
+    final motivation = vm.getMotivationalMessage(goal);
+    final statsFuture = _statisticsFuture;
 
     return Scaffold(
       extendBodyBehindAppBar: true,
@@ -67,7 +111,7 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
           IconButton(
             icon: const Icon(Icons.refresh),
             tooltip: 'Обновить',
-            onPressed: _loadStatistics,
+            onPressed: () => _handleRefresh(),
           ),
         ],
         backgroundColor: Colors.transparent,
@@ -88,45 +132,58 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
                 ),
         ),
         child: SafeArea(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.all(20),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                _buildProgressCard(context, goal, isDark),
-                const SizedBox(height: 20),
-
-                if (settings.settings.showPredictions && predictions.isNotEmpty) ...[
-                  _buildPredictionsCard(context, predictions, isDark),
+          child: RefreshIndicator(
+            onRefresh: _handleRefresh,
+            color: isDark ? DarkColors.primary : LightColors.primary,
+            child: SingleChildScrollView(
+              physics: const BouncingScrollPhysics(parent: AlwaysScrollableScrollPhysics()),
+              padding: const EdgeInsets.all(20),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _buildProgressCard(context, goal, motivation, isDark),
                   const SizedBox(height: 20),
+
+                  if (settings.settings.showPredictions && predictions.isNotEmpty) ...[
+                    _buildPredictionsCard(context, predictions, isDark),
+                    const SizedBox(height: 20),
+                  ],
+
+                  if (statsFuture == null)
+                    const _LoadingCard()
+                  else
+                    FutureBuilder<SavingsStatistics>(
+                      future: statsFuture,
+                      builder: (context, snapshot) {
+                        Widget child;
+                        if (snapshot.connectionState == ConnectionState.waiting) {
+                          child = const _LoadingCard();
+                        } else if (snapshot.hasError) {
+                          child = _ErrorCard(
+                            onRetry: _handleRefresh,
+                            message: 'Не удалось загрузить статистику',
+                          );
+                        } else if (snapshot.hasData) {
+                          child = Column(
+                            key: const ValueKey('stats-loaded'),
+                            children: [
+                              _buildStatsCard(context, snapshot.data!, isDark),
+                              const SizedBox(height: 20),
+                              _buildTransactionBreakdown(context, snapshot.data!, isDark),
+                            ],
+                          );
+                        } else {
+                          child = const _EmptyCard();
+                        }
+
+                        return AnimatedSwitcher(
+                          duration: const Duration(milliseconds: 300),
+                          child: child,
+                        );
+                      },
+                    ),
                 ],
-
-                FutureBuilder<SavingsStatistics>(
-                  future: _statisticsFuture,
-                  builder: (context, snapshot) {
-                    Widget child;
-                    if (snapshot.connectionState == ConnectionState.waiting) {
-                      child = const _LoadingCard();
-                    } else if (snapshot.hasData) {
-                      child = Column(
-                        key: const ValueKey('stats-loaded'),
-                        children: [
-                          _buildStatsCard(context, snapshot.data!, isDark),
-                          const SizedBox(height: 20),
-                          _buildTransactionBreakdown(context, snapshot.data!, isDark),
-                        ],
-                      );
-                    } else {
-                      child = const _EmptyCard();
-                    }
-
-                    return AnimatedSwitcher(
-                      duration: const Duration(milliseconds: 300),
-                      child: child,
-                    );
-                  },
-                ),
-              ],
+              ),
             ),
           ),
         ),
@@ -134,11 +191,16 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
     );
   }
 
-  Widget _buildProgressCard(BuildContext context, Goal goal, bool isDark) {
+  Widget _buildProgressCard(
+    BuildContext context,
+    Goal goal,
+    String motivation,
+    bool isDark,
+  ) {
     final progress = goal.targetAmount > 0 ? (goal.currentAmount / goal.targetAmount).clamp(0.0, 1.0) : 0.0;
     final remaining = goal.targetAmount - goal.currentAmount;
     final currencyFormat = NumberFormat.currency(locale: 'ru_RU', symbol: '₽', decimalDigits: 0);
-    
+
     return Container(
       decoration: BoxDecoration(
         gradient: isDark ? AppGradients.cardDark : AppGradients.primary,
@@ -222,6 +284,31 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
                     color: (isDark ? DarkColors.textPrimary : Colors.white).withOpacity(0.9),
                   ),
             ),
+
+          const SizedBox(height: 18),
+
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(isDark ? 0.18 : 0.22),
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: Row(
+              children: [
+                const Icon(Icons.auto_awesome, color: Colors.white, size: 20),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    motivation,
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                          color: isDark ? DarkColors.textPrimary : Colors.white,
+                          fontWeight: FontWeight.w600,
+                        ),
+                  ),
+                ),
+              ],
+            ),
+          ),
         ],
       ),
     );
@@ -423,7 +510,12 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
   Widget _buildTransactionBreakdown(BuildContext context, SavingsStatistics stats, bool isDark) {
     if (stats.totalTransactions == 0) return const SizedBox();
 
-    final depositPercent = stats.totalDeposits / (stats.totalDeposits + stats.totalWithdrawals);
+    final totalFlow = stats.totalDeposits + stats.totalWithdrawals;
+    if (totalFlow == 0) {
+      return const SizedBox();
+    }
+
+    final depositPercent = stats.totalDeposits / totalFlow;
     final withdrawalPercent = 1 - depositPercent;
 
     return _FrostedCard(
@@ -545,24 +637,30 @@ class _FrostedCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(24),
-      decoration: BoxDecoration(
-        color: (isDark ? Colors.white24 : Colors.white).withOpacity(isDark ? 0.12 : 0.9),
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(
-          color: (isDark ? DarkColors.border : LightColors.border).withOpacity(0.4),
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(isDark ? 0.3 : 0.08),
-            blurRadius: 18,
-            offset: const Offset(0, 12),
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(24),
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 25, sigmaY: 25),
+        child: Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(24),
+          decoration: BoxDecoration(
+            color: (isDark ? Colors.white12 : Colors.white.withOpacity(0.92)),
+            borderRadius: BorderRadius.circular(24),
+            border: Border.all(
+              color: (isDark ? DarkColors.border : LightColors.border).withOpacity(0.35),
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(isDark ? 0.35 : 0.09),
+                blurRadius: 24,
+                offset: const Offset(0, 18),
+              ),
+            ],
           ),
-        ],
+          child: child,
+        ),
       ),
-      child: child,
     );
   }
 }
@@ -614,6 +712,37 @@ class _LegendItem extends StatelessWidget {
         const SizedBox(width: 8),
         Text(label, style: Theme.of(context).textTheme.bodyMedium),
       ],
+    );
+  }
+}
+
+class _ErrorCard extends StatelessWidget {
+  final Future<void> Function() onRetry;
+  final String message;
+
+  const _ErrorCard({required this.onRetry, required this.message});
+
+  @override
+  Widget build(BuildContext context) {
+    return _FrostedCard(
+      key: const ValueKey('stats-error'),
+      child: Column(
+        children: [
+          Icon(Icons.error_outline, color: Theme.of(context).colorScheme.error, size: 48),
+          const SizedBox(height: 16),
+          Text(
+            message,
+            style: Theme.of(context).textTheme.titleMedium,
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 12),
+          TextButton.icon(
+            onPressed: () => onRetry(),
+            icon: const Icon(Icons.refresh),
+            label: const Text('Повторить'),
+          ),
+        ],
+      ),
     );
   }
 }
