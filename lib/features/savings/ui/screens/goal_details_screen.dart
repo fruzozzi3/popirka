@@ -190,7 +190,7 @@ class _GoalDetailsScreenState extends State<GoalDetailsScreen> {
             onPressed: () {
               Navigator.of(context).push(
                 MaterialPageRoute(
-                  builder: (_) => StatisticsScreen(goalId: goal.id!),
+                  builder: (_) => StatisticsScreen(goalId: widget.goalId),
                 ),
               );
             },
