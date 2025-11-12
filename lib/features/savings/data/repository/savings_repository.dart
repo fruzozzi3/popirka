@@ -55,4 +55,13 @@ class SavingsRepository {
     final value = res.first['total'] as int?;
     return value ?? 0;
   }
+
+  Future<List<Transaction>> getAllTransactions() async {
+    final db = await _appDatabase.database;
+    final res = await db.query(
+      'transactions',
+      orderBy: 'created_at DESC',
+    );
+    return res.map((e) => Transaction.fromMap(e)).toList();
+  }
 }

@@ -1,9 +1,10 @@
 // lib/core/db/app_database.dart
 
+import 'dart:io';
+
 import 'package:path/path.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:sqflite/sqflite.dart';
-import 'dart:io';
 
 class AppDatabase {
   static final AppDatabase _instance = AppDatabase._internal();
@@ -24,6 +25,10 @@ class AppDatabase {
     return await openDatabase(
       path,
       version: 1,
+      onConfigure: (db) async {
+        // Включаем поддержку внешних ключей для каскадного удаления транзакций
+        await db.execute('PRAGMA foreign_keys = ON');
+      },
       onCreate: (db, version) async {
         // Таблица для целей накоплений
         await db.execute('''

@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:my_kopilka/features/savings/models/goal.dart';
+import 'package:my_kopilka/features/savings/ui/screens/achievements_screen.dart';
 import 'package:my_kopilka/features/savings/ui/screens/goal_details_screen.dart';
+import 'package:my_kopilka/features/savings/ui/screens/statistics_screen.dart';
 import 'package:my_kopilka/features/savings/viewmodels/savings_view_model.dart';
 import 'package:my_kopilka/features/settings/viewmodels/settings_view_model.dart';
 import 'package:my_kopilka/features/savings/ui/screens/settings_screen.dart';
@@ -43,11 +45,22 @@ class HomeScreen extends StatelessWidget {
             ),
             actions: [
               IconButton(
+                icon: const Icon(Icons.emoji_events_outlined, color: Colors.white),
+                onPressed: () {
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => const AchievementsScreen(),
+                    ),
+                  );
+                },
+                tooltip: 'Достижения',
+              ),
+              IconButton(
                 icon: const Icon(Icons.settings, color: Colors.white),
                 onPressed: () {
                   Navigator.of(context).push(
                     MaterialPageRoute(
-                      builder: (_) => SettingsScreen(), // Removed 'const'
+                      builder: (_) => const SettingsScreen(),
                     ),
                   );
                 },
@@ -501,6 +514,44 @@ class GoalCard extends StatelessWidget {
                 ),
 
                 const SizedBox(height: 16),
+
+                if (goal.id != null)
+                  Column(
+                    children: [
+                      Row(
+                        children: [
+                          Expanded(
+                            child: OutlinedButton.icon(
+                              onPressed: () {
+                                Navigator.of(context).push(
+                                  MaterialPageRoute(
+                                    builder: (_) => GoalDetailsScreen(goalId: goal.id!),
+                                  ),
+                                );
+                              },
+                              icon: const Icon(Icons.history),
+                              label: const Text('История'),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: ElevatedButton.icon(
+                              onPressed: () {
+                                Navigator.of(context).push(
+                                  MaterialPageRoute(
+                                    builder: (_) => StatisticsScreen(goalId: goal.id!),
+                                  ),
+                                );
+                              },
+                              icon: const Icon(Icons.bar_chart_rounded),
+                              label: const Text('Статистика'),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 16),
+                    ],
+                  ),
 
                 // Кнопки быстрого пополнения
                 if (!isCompleted)

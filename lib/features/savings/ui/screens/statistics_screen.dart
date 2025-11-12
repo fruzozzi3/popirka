@@ -4,13 +4,14 @@ import 'package:intl/intl.dart';
 import 'package:my_kopilka/features/savings/models/goal.dart';
 import 'package:my_kopilka/features/savings/models/statistics.dart';
 import 'package:my_kopilka/features/savings/viewmodels/savings_view_model.dart';
+import 'package:my_kopilka/features/settings/viewmodels/settings_view_model.dart';
 import 'package:my_kopilka/theme/colors.dart';
 import 'package:provider/provider.dart';
 
 class StatisticsScreen extends StatefulWidget {
-  final Goal goal;
-  
-  const StatisticsScreen({super.key, required this.goal});
+  final int goalId;
+
+  const StatisticsScreen({super.key, required this.goalId});
 
   @override
   State<StatisticsScreen> createState() => _StatisticsScreenState();
@@ -28,7 +29,7 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
   void _loadStatistics() {
     final vm = Provider.of<SavingsViewModel>(context, listen: false);
     setState(() {
-      _statisticsFuture = vm.getStatisticsForGoal(widget.goal.id!);
+      _statisticsFuture = vm.getStatisticsForGoal(widget.goalId);
     });
   }
 
@@ -36,11 +37,37 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final vm = context.watch<SavingsViewModel>();
-    final predictions = vm.getPredictions(widget.goal);
-    
+    final settings = context.watch<SettingsViewModel>();
+    Goal? goal;
+    try {
+      goal = vm.goals.firstWhere((g) => g.id == widget.goalId);
+    } catch (_) {
+      goal = null;
+    }
+
+    if (goal == null) {
+      return Scaffold(
+        appBar: AppBar(
+          title: const Text('Статистика'),
+        ),
+        body: const Center(
+          child: Text('Цель не найдена.'),
+        ),
+      );
+    }
+
+    final predictions = settings.settings.showPredictions ? vm.getPredictions(goal) : <PredictionModel>[];
+
     return Scaffold(
       appBar: AppBar(
-        title: Text('Статистика: ${widget.goal.name}'),
+        title: Text('Статистика: ${goal.name}'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.refresh),
+            tooltip: 'Обновить',
+            onPressed: _loadStatistics,
+          ),
+        ],
         elevation: 0,
         backgroundColor: Colors.transparent,
       ),
@@ -50,13 +77,15 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             // Карточка с основной информацией
-            _buildProgressCard(context, widget.goal, isDark),
+            _buildProgressCard(context, goal, isDark),
             const SizedBox(height: 16),
-            
+
             // Предсказания
-            _buildPredictionsCard(context, predictions, isDark),
-            const SizedBox(height: 16),
-            
+            if (settings.settings.showPredictions) ...[
+              _buildPredictionsCard(context, predictions, isDark),
+              const SizedBox(height: 16),
+            ],
+
             // Статистика транзакций
             FutureBuilder<SavingsStatistics>(
               future: _statisticsFuture,

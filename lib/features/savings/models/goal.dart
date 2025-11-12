@@ -16,6 +16,22 @@ class Goal {
     this.currentAmount = 0,
   });
 
+  Goal copyWith({
+    int? id,
+    String? name,
+    int? targetAmount,
+    DateTime? createdAt,
+    int? currentAmount,
+  }) {
+    return Goal(
+      id: id ?? this.id,
+      name: name ?? this.name,
+      targetAmount: targetAmount ?? this.targetAmount,
+      createdAt: createdAt ?? this.createdAt,
+      currentAmount: currentAmount ?? this.currentAmount,
+    );
+  }
+
   Map<String, dynamic> toMap() => {
         'id': id,
         'name': name,

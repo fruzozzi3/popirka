@@ -1,10 +1,12 @@
 // lib/features/savings/viewmodels/savings_view_model.dart
 import 'package:flutter/foundation.dart';
+import 'dart:math';
+
 import 'package:my_kopilka/features/savings/data/repository/savings_repository.dart';
-import 'package:my_kopilka/features/savings/models/goal.dart';
-import 'package:my_kopilka/features/savings/models/transaction.dart';
 import 'package:my_kopilka/features/savings/models/achievement.dart';
+import 'package:my_kopilka/features/savings/models/goal.dart';
 import 'package:my_kopilka/features/savings/models/statistics.dart';
+import 'package:my_kopilka/features/savings/models/transaction.dart';
 
 class SavingsViewModel extends ChangeNotifier {
   final SavingsRepository _repository;
@@ -21,7 +23,6 @@ class SavingsViewModel extends ChangeNotifier {
 
   Future<void> init() async {
     try {
-      _achievements = Achievement.getAllAchievements();
       await fetchGoals();
     } catch (e) {
       debugPrint('Error initializing SavingsViewModel: $e');
@@ -41,13 +42,12 @@ class SavingsViewModel extends ChangeNotifier {
       }
       _goals = fetchedGoals;
 
-      _isLoading = false;
-      notifyListeners();
+      await _refreshAchievements();
     } catch (e) {
       debugPrint('Error fetching goals: $e');
-      _isLoading = false;
-      notifyListeners();
     }
+    _isLoading = false;
+    notifyListeners();
   }
 
   Future<void> addGoal(String name, int targetAmount) async {
@@ -130,6 +130,154 @@ class SavingsViewModel extends ChangeNotifier {
       debugPrint('Error getting statistics: $e');
       return SavingsStatistics();
     }
+  }
+
+  Future<void> _refreshAchievements() async {
+    try {
+      final transactions = await _repository.getAllTransactions();
+      _achievements = _calculateAchievements(transactions);
+    } catch (e) {
+      debugPrint('Error updating achievements: $e');
+    }
+  }
+
+  List<Achievement> _calculateAchievements(List<Transaction> transactions) {
+    final baseAchievements = Achievement.getAllAchievements();
+    if (baseAchievements.isEmpty) {
+      return [];
+    }
+
+    final deposits = transactions
+        .where((t) => t.amount > 0)
+        .toList()
+      ..sort((a, b) => a.createdAt.compareTo(b.createdAt));
+
+    final totalSaved = getTotalSaved();
+    final hasCompletedGoal = getCompletedGoals().isNotEmpty;
+    final biggestDeposit = deposits.isEmpty
+        ? 0
+        : deposits.map((t) => t.amount).reduce(max);
+    final longestStreak = _calculateLongestDepositStreak(deposits);
+
+    return baseAchievements.map((achievement) {
+      DateTime? unlockedAt;
+      bool isUnlocked = false;
+      int progress = 0;
+
+      switch (achievement.type) {
+        case AchievementType.firstDeposit:
+          isUnlocked = deposits.isNotEmpty;
+          progress = isUnlocked ? 1 : 0;
+          unlockedAt = isUnlocked ? deposits.first.createdAt : null;
+          break;
+        case AchievementType.reach1000:
+        case AchievementType.reach5000:
+        case AchievementType.reach10000:
+        case AchievementType.reach50000:
+        case AchievementType.reach100000:
+          final progress = min(totalSaved, achievement.maxProgress);
+          isUnlocked = totalSaved >= achievement.maxProgress;
+          unlockedAt = isUnlocked && deposits.isNotEmpty
+              ? _findDepositDateForAmount(deposits, achievement.maxProgress)
+              : null;
+          return Achievement(
+            type: achievement.type,
+            title: achievement.title,
+            description: achievement.description,
+            icon: achievement.icon,
+            isUnlocked: isUnlocked,
+            unlockedAt: unlockedAt,
+            progress: progress,
+            maxProgress: achievement.maxProgress,
+          );
+        case AchievementType.streak7days:
+        case AchievementType.streak30days:
+          progress = min(longestStreak, achievement.maxProgress);
+          isUnlocked = longestStreak >= achievement.maxProgress;
+          break;
+        case AchievementType.completedGoal:
+          isUnlocked = hasCompletedGoal;
+          progress = isUnlocked ? 1 : 0;
+          break;
+        case AchievementType.bigSaver:
+          final progress = min(biggestDeposit, achievement.maxProgress);
+          isUnlocked = biggestDeposit >= achievement.maxProgress;
+          unlockedAt = isUnlocked && deposits.isNotEmpty
+              ? _findSingleDepositDate(deposits, achievement.maxProgress)
+              : null;
+          return Achievement(
+            type: achievement.type,
+            title: achievement.title,
+            description: achievement.description,
+            icon: achievement.icon,
+            isUnlocked: isUnlocked,
+            unlockedAt: unlockedAt,
+            progress: progress,
+            maxProgress: achievement.maxProgress,
+          );
+        case AchievementType.consistent:
+          // Нет отдельной карточки для этого достижения, поэтому просто возвращаем исходное значение
+          return achievement;
+      }
+      return Achievement(
+        type: achievement.type,
+        title: achievement.title,
+        description: achievement.description,
+        icon: achievement.icon,
+        isUnlocked: isUnlocked,
+        unlockedAt: unlockedAt,
+        progress: progress,
+        maxProgress: achievement.maxProgress,
+      );
+    }).toList();
+  }
+
+  int _calculateLongestDepositStreak(List<Transaction> deposits) {
+    if (deposits.isEmpty) return 0;
+
+    final uniqueDates = deposits
+        .map((t) => DateTime(t.createdAt.year, t.createdAt.month, t.createdAt.day))
+        .toSet()
+        .toList()
+      ..sort();
+
+    int longest = 1;
+    int current = 1;
+
+    for (var i = 1; i < uniqueDates.length; i++) {
+      final difference = uniqueDates[i].difference(uniqueDates[i - 1]).inDays;
+      if (difference == 0) {
+        continue;
+      }
+      if (difference == 1) {
+        current += 1;
+      } else {
+        current = 1;
+      }
+      longest = max(longest, current);
+    }
+
+    return longest;
+  }
+
+  DateTime? _findDepositDateForAmount(List<Transaction> deposits, int targetAmount) {
+    int accumulated = 0;
+    for (final transaction in deposits) {
+      accumulated += transaction.amount;
+      if (accumulated >= targetAmount) {
+        return transaction.createdAt;
+      }
+    }
+    return null;
+  }
+
+  DateTime? _findSingleDepositDate(List<Transaction> deposits, int targetAmount) {
+    for (final transaction in deposits) {
+      if (transaction.amount >= targetAmount) {
+        return transaction.createdAt;
+      }
+    }
+    return null;
   }
 
   // Мотивационные сообщения

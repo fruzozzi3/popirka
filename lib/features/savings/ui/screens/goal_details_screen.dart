@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
+import 'package:my_kopilka/features/savings/models/goal.dart';
 import 'package:my_kopilka/features/savings/models/transaction.dart' as model;
+import 'package:my_kopilka/features/savings/ui/screens/statistics_screen.dart';
 import 'package:my_kopilka/features/savings/viewmodels/savings_view_model.dart';
 import 'package:provider/provider.dart';
 
@@ -18,11 +21,11 @@ class _GoalDetailsScreenState extends State<GoalDetailsScreen> {
   @override
   void initState() {
     super.initState();
-    _loadTransactions();
+    final vm = Provider.of<SavingsViewModel>(context, listen: false);
+    _transactionsFuture = vm.getTransactionsForGoal(widget.goalId);
   }
-  
+
   void _loadTransactions() {
-    // Используем listen: false, так как нам не нужно перестраивать FutureBuilder при каждом изменении ViewModel
     final vm = Provider.of<SavingsViewModel>(context, listen: false);
     setState(() {
       _transactionsFuture = vm.getTransactionsForGoal(widget.goalId);
@@ -50,6 +53,7 @@ class _GoalDetailsScreenState extends State<GoalDetailsScreen> {
                 controller: amountController,
                 decoration: const InputDecoration(labelText: 'Сумма'),
                 keyboardType: TextInputType.number,
+                inputFormatters: [FilteringTextInputFormatter.digitsOnly],
                 validator: (value) {
                   if (value!.isEmpty) return 'Введите сумму';
                   final parsedAmount = int.tryParse(value);
@@ -92,11 +96,87 @@ class _GoalDetailsScreenState extends State<GoalDetailsScreen> {
     );
   }
 
+  void _showEditGoalDialog(BuildContext context) {
+    final vm = context.read<SavingsViewModel>();
+    final goal = vm.goals.firstWhere((g) => g.id == widget.goalId);
+    final nameController = TextEditingController(text: goal.name);
+    final amountController = TextEditingController(text: goal.targetAmount.toString());
+    final formKey = GlobalKey<FormState>();
+    final currencyFormat = NumberFormat.currency(locale: 'ru_RU', symbol: '₽', decimalDigits: 0);
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Редактировать цель'),
+        content: Form(
+          key: formKey,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextFormField(
+                controller: nameController,
+                decoration: const InputDecoration(labelText: 'Название цели'),
+                validator: (value) => value?.trim().isEmpty ?? true ? 'Введите название' : null,
+              ),
+              const SizedBox(height: 16),
+              TextFormField(
+                controller: amountController,
+                decoration: const InputDecoration(
+                  labelText: 'Сумма цели',
+                  suffixText: '₽',
+                ),
+                keyboardType: TextInputType.number,
+                inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                validator: (value) {
+                  if (value == null || value.trim().isEmpty) return 'Введите сумму';
+                  final parsed = int.tryParse(value);
+                  if (parsed == null || parsed <= 0) return 'Сумма должна быть положительной';
+                  if (parsed < goal.currentAmount) {
+                    return 'Сумма не может быть меньше уже накопленных средств (${currencyFormat.format(goal.currentAmount)})';
+                  }
+                  return null;
+                },
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Отмена'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              if (!formKey.currentState!.validate()) return;
+              final updatedGoal = goal.copyWith(
+                name: nameController.text.trim(),
+                targetAmount: int.parse(amountController.text),
+              );
+              vm.updateGoal(updatedGoal).then((_) => Navigator.of(context).pop());
+            },
+            child: const Text('Сохранить'),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     // Находим цель в общем списке, чтобы отображать актуальную информацию
     final vm = context.watch<SavingsViewModel>();
-    final goal = vm.goals.firstWhere((g) => g.id == widget.goalId);
+    Goal? goal;
+    try {
+      goal = vm.goals.firstWhere((g) => g.id == widget.goalId);
+    } catch (_) {
+      goal = null;
+    }
+    if (goal == null) {
+      return Scaffold(
+        appBar: AppBar(title: const Text('Цель не найдена')),
+        body: const Center(child: Text('Цель была удалена или недоступна.')),
+      );
+    }
     final currencyFormat = NumberFormat.currency(locale: 'ru_RU', symbol: '₽', decimalDigits: 0);
     final progress = goal.targetAmount > 0 ? (goal.currentAmount / goal.targetAmount).clamp(0.0, 1.0) : 0.0;
 
@@ -104,6 +184,22 @@ class _GoalDetailsScreenState extends State<GoalDetailsScreen> {
       appBar: AppBar(
         title: Text(goal.name),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.bar_chart_rounded),
+            tooltip: 'Статистика',
+            onPressed: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => StatisticsScreen(goalId: goal.id!),
+                ),
+              );
+            },
+          ),
+          IconButton(
+            icon: const Icon(Icons.edit),
+            tooltip: 'Редактировать цель',
+            onPressed: () => _showEditGoalDialog(context),
+          ),
           IconButton(
             icon: const Icon(Icons.delete_outline, color: Colors.red),
             onPressed: () {
@@ -122,7 +218,6 @@ class _GoalDetailsScreenState extends State<GoalDetailsScreen> {
                         vm.deleteGoal(widget.goalId).then((_) {
                           Navigator.of(context).pop(); // Закрыть диалог
                           Navigator.of(context).pop(); // Вернуться на HomeScreen
-                          vm.fetchGoals(); // Обновить список целей
                         });
                       },
                       style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
