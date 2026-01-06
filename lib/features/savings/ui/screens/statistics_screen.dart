@@ -4,12 +4,13 @@ import 'package:intl/intl.dart';
 import 'package:my_kopilka/features/savings/models/goal.dart';
 import 'package:my_kopilka/features/savings/models/statistics.dart';
 import 'package:my_kopilka/features/savings/viewmodels/savings_view_model.dart';
+import 'package:my_kopilka/features/settings/viewmodels/settings_view_model.dart';
 import 'package:my_kopilka/theme/colors.dart';
 import 'package:provider/provider.dart';
 
 class StatisticsScreen extends StatefulWidget {
   final Goal goal;
-  
+
   const StatisticsScreen({super.key, required this.goal});
 
   @override
@@ -22,64 +23,104 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
   @override
   void initState() {
     super.initState();
-    _loadStatistics();
+    _reload();
   }
 
-  void _loadStatistics() {
+  Future<void> _reload() async {
     final vm = Provider.of<SavingsViewModel>(context, listen: false);
+    if (!mounted) return;
+
     setState(() {
       _statisticsFuture = vm.getStatisticsForGoal(widget.goal.id!);
     });
+
+    // чтобы RefreshIndicator корректно ждал
+    await _statisticsFuture;
   }
 
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final vm = context.watch<SavingsViewModel>();
-    final predictions = vm.getPredictions(widget.goal);
-    
+    final settingsVM = context.watch<SettingsViewModel>();
+
+    final Goal liveGoal = vm.goals.where((g) => g.id == widget.goal.id).isNotEmpty
+        ? vm.goals.firstWhere((g) => g.id == widget.goal.id)
+        : widget.goal;
+
+    final predictions = settingsVM.settings.showPredictions ? vm.getPredictions(liveGoal) : <PredictionModel>[];
+
     return Scaffold(
       appBar: AppBar(
-        title: Text('Статистика: ${widget.goal.name}'),
+        title: Text('Статистика: ${liveGoal.name}'),
         elevation: 0,
         backgroundColor: Colors.transparent,
+        actions: [
+          IconButton(
+            tooltip: 'Обновить',
+            onPressed: _reload,
+            icon: const Icon(Icons.refresh),
+          ),
+        ],
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Карточка с основной информацией
-            _buildProgressCard(context, widget.goal, isDark),
-            const SizedBox(height: 16),
-            
-            // Предсказания
-            _buildPredictionsCard(context, predictions, isDark),
-            const SizedBox(height: 16),
-            
-            // Статистика транзакций
-            FutureBuilder<SavingsStatistics>(
-              future: _statisticsFuture,
-              builder: (context, snapshot) {
-                if (snapshot.connectionState == ConnectionState.waiting) {
-                  return const Center(child: CircularProgressIndicator());
-                }
-                
-                if (!snapshot.hasData) {
-                  return const Center(child: Text('Нет данных'));
-                }
-                
-                final stats = snapshot.data!;
-                return Column(
-                  children: [
-                    _buildStatsCard(context, stats, isDark),
-                    const SizedBox(height: 16),
-                    _buildTransactionBreakdown(context, stats, isDark),
-                  ],
-                );
-              },
-            ),
-          ],
+      body: RefreshIndicator(
+        onRefresh: _reload,
+        child: SingleChildScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _buildProgressCard(context, liveGoal, isDark),
+              const SizedBox(height: 16),
+
+              if (settingsVM.settings.showPredictions) ...[
+                _buildPredictionsCard(context, predictions, isDark),
+                const SizedBox(height: 16),
+              ],
+
+              FutureBuilder<SavingsStatistics>(
+                future: _statisticsFuture,
+                builder: (context, snapshot) {
+                  if (snapshot.connectionState == ConnectionState.waiting) {
+                    return const Center(child: Padding(
+                      padding: EdgeInsets.symmetric(vertical: 24),
+                      child: CircularProgressIndicator(),
+                    ));
+                  }
+
+                  if (snapshot.hasError) {
+                    return Center(
+                      child: Column(
+                        children: [
+                          const Text('Ошибка загрузки статистики'),
+                          const SizedBox(height: 12),
+                          ElevatedButton.icon(
+                            onPressed: _reload,
+                            icon: const Icon(Icons.refresh),
+                            label: const Text('Повторить'),
+                          ),
+                        ],
+                      ),
+                    );
+                  }
+
+                  if (!snapshot.hasData) {
+                    return const Center(child: Text('Нет данных'));
+                  }
+
+                  final stats = snapshot.data!;
+                  return Column(
+                    children: [
+                      _buildStatsCard(context, stats, isDark),
+                      const SizedBox(height: 16),
+                      _buildTransactionBreakdown(context, stats, isDark),
+                    ],
+                  );
+                },
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -89,7 +130,7 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
     final progress = goal.targetAmount > 0 ? (goal.currentAmount / goal.targetAmount).clamp(0.0, 1.0) : 0.0;
     final remaining = goal.targetAmount - goal.currentAmount;
     final currencyFormat = NumberFormat.currency(locale: 'ru_RU', symbol: '₽', decimalDigits: 0);
-    
+
     return Container(
       decoration: BoxDecoration(
         gradient: isDark ? AppGradients.cardDark : AppGradients.primary,
@@ -134,7 +175,6 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
             ],
           ),
           const SizedBox(height: 16),
-          
           Text(
             currencyFormat.format(goal.currentAmount),
             style: TextStyle(
@@ -150,9 +190,7 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
               fontSize: 16,
             ),
           ),
-          
           const SizedBox(height: 20),
-          
           ClipRRect(
             borderRadius: BorderRadius.circular(8),
             child: LinearProgressIndicator(
@@ -164,9 +202,7 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
               ),
             ),
           ),
-          
           const SizedBox(height: 12),
-          
           if (remaining > 0)
             Text(
               'Осталось: ${currencyFormat.format(remaining)}',
@@ -201,15 +237,10 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
               ],
             ),
             const SizedBox(height: 16),
-            
             if (predictions.isEmpty)
               const Text('Цель уже достигнута! 🎉')
             else
-              ...predictions.map((prediction) => _buildPredictionRow(
-                context,
-                prediction,
-                isDark,
-              )).toList(),
+              ...predictions.map((prediction) => _buildPredictionRow(context, prediction, isDark)).toList(),
           ],
         ),
       ),
@@ -218,7 +249,7 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
 
   Widget _buildPredictionRow(BuildContext context, PredictionModel prediction, bool isDark) {
     final dateFormat = DateFormat('dd MMM yyyy', 'ru');
-    
+
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(16),
@@ -266,7 +297,7 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
 
   Widget _buildStatsCard(BuildContext context, SavingsStatistics stats, bool isDark) {
     final currencyFormat = NumberFormat.currency(locale: 'ru_RU', symbol: '₽', decimalDigits: 0);
-    
+
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(20),
@@ -278,7 +309,6 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
               style: Theme.of(context).textTheme.titleLarge,
             ),
             const SizedBox(height: 16),
-            
             Row(
               children: [
                 Expanded(
@@ -304,9 +334,7 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
                 ),
               ],
             ),
-            
             const SizedBox(height: 16),
-            
             Row(
               children: [
                 Expanded(
@@ -375,10 +403,11 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
 
   Widget _buildTransactionBreakdown(BuildContext context, SavingsStatistics stats, bool isDark) {
     if (stats.totalTransactions == 0) return const SizedBox();
-    
-    final depositPercent = stats.totalDeposits / (stats.totalDeposits + stats.totalWithdrawals);
+
+    final denom = (stats.totalDeposits + stats.totalWithdrawals);
+    final depositPercent = denom == 0 ? 0.5 : (stats.totalDeposits / denom);
     final withdrawalPercent = 1 - depositPercent;
-    
+
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(20),
@@ -390,8 +419,7 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
               style: Theme.of(context).textTheme.titleLarge,
             ),
             const SizedBox(height: 16),
-            
-            // Визуальная полоса соотношения
+
             Container(
               height: 8,
               decoration: BoxDecoration(
@@ -400,7 +428,7 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
               child: Row(
                 children: [
                   Expanded(
-                    flex: (depositPercent * 100).round(),
+                    flex: (depositPercent * 100).round().clamp(0, 100),
                     child: Container(
                       decoration: BoxDecoration(
                         color: isDark ? DarkColors.income : LightColors.success,
@@ -409,7 +437,7 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
                     ),
                   ),
                   Expanded(
-                    flex: (withdrawalPercent * 100).round(),
+                    flex: (withdrawalPercent * 100).round().clamp(0, 100),
                     child: Container(
                       decoration: BoxDecoration(
                         color: isDark ? DarkColors.expense : LightColors.error,
@@ -420,9 +448,9 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
                 ],
               ),
             ),
-            
+
             const SizedBox(height: 12),
-            
+
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
