@@ -1,10 +1,11 @@
 // lib/features/savings/viewmodels/savings_view_model.dart
+
 import 'package:flutter/foundation.dart';
 import 'package:my_kopilka/features/savings/data/repository/savings_repository.dart';
-import 'package:my_kopilka/features/savings/models/goal.dart';
-import 'package:my_kopilka/features/savings/models/transaction.dart';
 import 'package:my_kopilka/features/savings/models/achievement.dart';
+import 'package:my_kopilka/features/savings/models/goal.dart';
 import 'package:my_kopilka/features/savings/models/statistics.dart';
+import 'package:my_kopilka/features/savings/models/transaction.dart';
 
 class SavingsViewModel extends ChangeNotifier {
   final SavingsRepository _repository;
@@ -19,34 +20,45 @@ class SavingsViewModel extends ChangeNotifier {
   bool _isLoading = false;
   bool get isLoading => _isLoading;
 
+  void _setLoading(bool v) {
+    _isLoading = v;
+    notifyListeners();
+  }
+
   Future<void> init() async {
     try {
       _achievements = Achievement.getAllAchievements();
       await fetchGoals();
     } catch (e) {
       debugPrint('Error initializing SavingsViewModel: $e');
-      _isLoading = false;
-      notifyListeners();
+      _setLoading(false);
+      rethrow;
     }
   }
 
   Future<void> fetchGoals() async {
+    _setLoading(true);
     try {
-      _isLoading = true;
-      notifyListeners();
-
       final fetchedGoals = await _repository.getAllGoals();
-      for (var goal in fetchedGoals) {
-        goal.currentAmount = await _repository.getCurrentSumForGoal(goal.id!);
-      }
-      _goals = fetchedGoals;
 
-      _isLoading = false;
-      notifyListeners();
+      final sums = await Future.wait<int>(
+        fetchedGoals.map((g) async {
+          final id = g.id;
+          if (id == null) return 0;
+          return _repository.getCurrentSumForGoal(id);
+        }),
+      );
+
+      for (var i = 0; i < fetchedGoals.length; i++) {
+        fetchedGoals[i].currentAmount = sums[i];
+      }
+
+      _goals = fetchedGoals;
     } catch (e) {
       debugPrint('Error fetching goals: $e');
-      _isLoading = false;
-      notifyListeners();
+      rethrow;
+    } finally {
+      _setLoading(false);
     }
   }
 
@@ -61,6 +73,7 @@ class SavingsViewModel extends ChangeNotifier {
       await fetchGoals();
     } catch (e) {
       debugPrint('Error adding goal: $e');
+      rethrow;
     }
   }
 
@@ -70,6 +83,7 @@ class SavingsViewModel extends ChangeNotifier {
       await fetchGoals();
     } catch (e) {
       debugPrint('Error updating goal: $e');
+      rethrow;
     }
   }
 
@@ -79,10 +93,15 @@ class SavingsViewModel extends ChangeNotifier {
       await fetchGoals();
     } catch (e) {
       debugPrint('Error deleting goal: $e');
+      rethrow;
     }
   }
 
   Future<void> addTransaction(int goalId, int amount, {String? notes}) async {
+    if (amount == 0) {
+      throw ArgumentError.value(amount, 'amount', 'Amount must not be 0');
+    }
+
     try {
       final transaction = Transaction(
         goalId: goalId,
@@ -94,6 +113,7 @@ class SavingsViewModel extends ChangeNotifier {
       await fetchGoals();
     } catch (e) {
       debugPrint('Error adding transaction: $e');
+      rethrow;
     }
   }
 
@@ -109,13 +129,13 @@ class SavingsViewModel extends ChangeNotifier {
   Future<SavingsStatistics> getStatisticsForGoal(int goalId) async {
     try {
       final transactions = await getTransactionsForGoal(goalId);
-      
+
       final deposits = transactions.where((t) => t.amount > 0).toList();
       final withdrawals = transactions.where((t) => t.amount < 0).toList();
-      
+
       final totalDeposits = deposits.fold(0, (sum, t) => sum + t.amount);
       final totalWithdrawals = withdrawals.fold(0, (sum, t) => sum + t.amount.abs());
-      
+
       return SavingsStatistics(
         totalDeposits: totalDeposits,
         totalWithdrawals: totalWithdrawals,
@@ -134,8 +154,13 @@ class SavingsViewModel extends ChangeNotifier {
 
   // Мотивационные сообщения
   String getMotivationalMessage(Goal goal) {
-    final progress = goal.currentAmount / goal.targetAmount;
-    
+    final target = goal.targetAmount;
+    if (target <= 0) {
+      return "💡 Задай сумму цели — и начнем копить!";
+    }
+
+    final progress = (goal.currentAmount / target).clamp(0.0, 1.5);
+
     if (progress >= 1.0) {
       return "🎉 Поздравляем! Цель достигнута!";
     } else if (progress >= 0.9) {
@@ -155,6 +180,8 @@ class SavingsViewModel extends ChangeNotifier {
 
   // Предсказания
   List<PredictionModel> getPredictions(Goal goal) {
+    if (goal.targetAmount <= 0) return [];
+
     final remaining = goal.targetAmount - goal.currentAmount;
     if (remaining <= 0) return [];
 
@@ -170,13 +197,9 @@ class SavingsViewModel extends ChangeNotifier {
   }
 
   // Дополнительные функции
-  int getTotalSaved() {
-    return _goals.fold(0, (sum, goal) => sum + goal.currentAmount);
-  }
+  int getTotalSaved() => _goals.fold(0, (sum, goal) => sum + goal.currentAmount);
 
-  int getTotalGoals() {
-    return _goals.fold(0, (sum, goal) => sum + goal.targetAmount);
-  }
+  int getTotalGoals() => _goals.fold(0, (sum, goal) => sum + goal.targetAmount);
 
   double getOverallProgress() {
     final total = getTotalGoals();
@@ -184,11 +207,7 @@ class SavingsViewModel extends ChangeNotifier {
     return total > 0 ? saved / total : 0.0;
   }
 
-  List<Goal> getCompletedGoals() {
-    return _goals.where((g) => g.currentAmount >= g.targetAmount).toList();
-  }
+  List<Goal> getCompletedGoals() => _goals.where((g) => g.currentAmount >= g.targetAmount).toList();
 
-  List<Goal> getActiveGoals() {
-    return _goals.where((g) => g.currentAmount < g.targetAmount).toList();
-  }
+  List<Goal> getActiveGoals() => _goals.where((g) => g.currentAmount < g.targetAmount).toList();
 }
