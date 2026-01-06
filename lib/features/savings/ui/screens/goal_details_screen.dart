@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:my_kopilka/features/savings/models/transaction.dart' as model;
 import 'package:my_kopilka/features/savings/viewmodels/savings_view_model.dart';
@@ -20,10 +21,10 @@ class _GoalDetailsScreenState extends State<GoalDetailsScreen> {
     super.initState();
     _loadTransactions();
   }
-  
+
   void _loadTransactions() {
-    // Используем listen: false, так как нам не нужно перестраивать FutureBuilder при каждом изменении ViewModel
     final vm = Provider.of<SavingsViewModel>(context, listen: false);
+    if (!mounted) return;
     setState(() {
       _transactionsFuture = vm.getTransactionsForGoal(widget.goalId);
     });
@@ -31,7 +32,18 @@ class _GoalDetailsScreenState extends State<GoalDetailsScreen> {
 
   void _showAddTransactionDialog(BuildContext context, {required bool isWithdrawal}) {
     final vm = context.read<SavingsViewModel>();
-    final goal = vm.goals.firstWhere((g) => g.id == widget.goalId);
+    final goal = vm.goals.cast().where((g) => g.id == widget.goalId).isNotEmpty
+        ? vm.goals.firstWhere((g) => g.id == widget.goalId)
+        : null;
+
+    if (goal == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Цель не найдена. Возможно, она была удалена.')),
+      );
+      Navigator.of(context).pop();
+      return;
+    }
+
     final currencyFormat = NumberFormat.currency(locale: 'ru_RU', symbol: '₽', decimalDigits: 0);
     final amountController = TextEditingController();
     final notesController = TextEditingController();
@@ -39,64 +51,166 @@ class _GoalDetailsScreenState extends State<GoalDetailsScreen> {
 
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: Text(isWithdrawal ? 'Снять из копилки' : 'Пополнить копилку'),
-        content: Form(
-          key: formKey,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextFormField(
-                controller: amountController,
-                decoration: const InputDecoration(labelText: 'Сумма'),
-                keyboardType: TextInputType.number,
-                validator: (value) {
-                  if (value!.isEmpty) return 'Введите сумму';
-                  final parsedAmount = int.tryParse(value);
-                  if (parsedAmount == null || parsedAmount <= 0) return 'Сумма должна быть больше нуля';
-                  if (isWithdrawal && parsedAmount > goal.currentAmount) {
-                    return 'Нельзя снять больше, чем накоплено (${currencyFormat.format(goal.currentAmount)})';
-                  }
-                  return null;
-                },
-              ),
-              if (isWithdrawal)
-                TextFormField(
-                  controller: notesController,
-                  decoration: const InputDecoration(labelText: 'На что (необязательно)'),
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (dialogContext, setDialogState) {
+          bool isSubmitting = false;
+
+          Future<void> submit() async {
+            if (isSubmitting) return;
+
+            if (!formKey.currentState!.validate()) return;
+
+            setDialogState(() => isSubmitting = true);
+            try {
+              int amount = int.parse(amountController.text);
+              if (isWithdrawal) amount = -amount;
+
+              final notes = notesController.text.trim().isEmpty ? null : notesController.text.trim();
+
+              await vm.addTransaction(widget.goalId, amount, notes: notes);
+
+              if (!mounted) return;
+              Navigator.of(dialogContext).pop();
+              _loadTransactions();
+
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text(isWithdrawal ? 'Снятие добавлено' : 'Пополнение добавлено'),
                 ),
+              );
+            } catch (_) {
+              if (!mounted) return;
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Не удалось сохранить операцию')),
+              );
+            } finally {
+              if (mounted) setDialogState(() => isSubmitting = false);
+            }
+          }
+
+          return AlertDialog(
+            title: Text(isWithdrawal ? 'Снять из копилки' : 'Пополнить копилку'),
+            content: Form(
+              key: formKey,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextFormField(
+                    controller: amountController,
+                    decoration: const InputDecoration(labelText: 'Сумма'),
+                    keyboardType: TextInputType.number,
+                    inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                    validator: (value) {
+                      if (value == null || value.isEmpty) return 'Введите сумму';
+                      final parsedAmount = int.tryParse(value);
+                      if (parsedAmount == null || parsedAmount <= 0) return 'Сумма должна быть больше нуля';
+                      if (isWithdrawal && parsedAmount > goal.currentAmount) {
+                        return 'Нельзя снять больше, чем накоплено (${currencyFormat.format(goal.currentAmount)})';
+                      }
+                      return null;
+                    },
+                  ),
+                  if (isWithdrawal)
+                    TextFormField(
+                      controller: notesController,
+                      decoration: const InputDecoration(labelText: 'На что (необязательно)'),
+                      textInputAction: TextInputAction.done,
+                    ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: isSubmitting ? null : () => Navigator.of(dialogContext).pop(),
+                child: const Text('Отмена'),
+              ),
+              ElevatedButton(
+                onPressed: isSubmitting ? null : submit,
+                child: isSubmitting
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Text('Подтвердить'),
+              ),
             ],
-          ),
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Отмена')),
-          ElevatedButton(
-            onPressed: () {
-              if (formKey.currentState!.validate()) {
-                int amount = int.parse(amountController.text);
-                if (isWithdrawal) {
-                  amount = -amount; // Делаем сумму отрицательной для снятия
-                }
-                final notes = notesController.text.isNotEmpty ? notesController.text : null;
-                
-                vm.addTransaction(widget.goalId, amount, notes: notes).then((_) {
-                  Navigator.of(context).pop();
-                  _loadTransactions(); // Перезагружаем список транзакций
-                });
-              }
-            },
-            child: const Text('Подтвердить'),
-          ),
-        ],
+          );
+        },
+      ),
+    );
+  }
+
+  Future<void> _confirmDeleteGoal(BuildContext context) async {
+    final vm = context.read<SavingsViewModel>();
+
+    await showDialog(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (dialogContext, setDialogState) {
+          bool isDeleting = false;
+
+          Future<void> doDelete() async {
+            if (isDeleting) return;
+            setDialogState(() => isDeleting = true);
+            try {
+              await vm.deleteGoal(widget.goalId);
+              if (!mounted) return;
+              Navigator.of(dialogContext).pop(); // close dialog
+              Navigator.of(context).pop(); // back
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Цель удалена')),
+              );
+            } catch (_) {
+              if (!mounted) return;
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Не удалось удалить цель')),
+              );
+            } finally {
+              if (mounted) setDialogState(() => isDeleting = false);
+            }
+          }
+
+          return AlertDialog(
+            title: const Text('Удалить цель?'),
+            content: const Text('Это действие нельзя отменить. Все транзакции для этой цели также будут удалены.'),
+            actions: [
+              TextButton(
+                onPressed: isDeleting ? null : () => Navigator.of(dialogContext).pop(),
+                child: const Text('Отмена'),
+              ),
+              ElevatedButton(
+                onPressed: isDeleting ? null : doDelete,
+                style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+                child: isDeleting
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Text('Удалить'),
+              ),
+            ],
+          );
+        },
       ),
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    // Находим цель в общем списке, чтобы отображать актуальную информацию
     final vm = context.watch<SavingsViewModel>();
-    final goal = vm.goals.firstWhere((g) => g.id == widget.goalId);
+    final goal = vm.goals.where((g) => g.id == widget.goalId).isNotEmpty
+        ? vm.goals.firstWhere((g) => g.id == widget.goalId)
+        : null;
+
+    if (goal == null) {
+      return Scaffold(
+        appBar: AppBar(title: const Text('Цель')),
+        body: const Center(child: Text('Цель не найдена. Возможно, она была удалена.')),
+      );
+    }
+
     final currencyFormat = NumberFormat.currency(locale: 'ru_RU', symbol: '₽', decimalDigits: 0);
     final progress = goal.targetAmount > 0 ? (goal.currentAmount / goal.targetAmount).clamp(0.0, 1.0) : 0.0;
 
@@ -106,32 +220,7 @@ class _GoalDetailsScreenState extends State<GoalDetailsScreen> {
         actions: [
           IconButton(
             icon: const Icon(Icons.delete_outline, color: Colors.red),
-            onPressed: () {
-              showDialog(
-                context: context,
-                builder: (context) => AlertDialog(
-                  title: const Text('Удалить цель?'),
-                  content: const Text('Это действие нельзя отменить. Все транзакции для этой цели также будут удалены.'),
-                  actions: [
-                    TextButton(
-                      onPressed: () => Navigator.of(context).pop(),
-                      child: const Text('Отмена'),
-                    ),
-                    ElevatedButton(
-                      onPressed: () {
-                        vm.deleteGoal(widget.goalId).then((_) {
-                          Navigator.of(context).pop(); // Закрыть диалог
-                          Navigator.of(context).pop(); // Вернуться на HomeScreen
-                          vm.fetchGoals(); // Обновить список целей
-                        });
-                      },
-                      style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-                      child: const Text('Удалить'),
-                    ),
-                  ],
-                ),
-              );
-            },
+            onPressed: () => _confirmDeleteGoal(context),
             tooltip: 'Удалить цель',
           ),
         ],
@@ -147,10 +236,13 @@ class _GoalDetailsScreenState extends State<GoalDetailsScreen> {
                 const SizedBox(height: 16),
                 LinearProgressIndicator(value: progress, minHeight: 10, borderRadius: BorderRadius.circular(5)),
                 const SizedBox(height: 8),
-                Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-                  Text('Прогресс: ${(progress * 100).toStringAsFixed(1)}%'),
-                  Text('Цель: ${currencyFormat.format(goal.targetAmount)}'),
-                ]),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text('Прогресс: ${(progress * 100).toStringAsFixed(1)}%'),
+                    Text('Цель: ${currencyFormat.format(goal.targetAmount)}'),
+                  ],
+                ),
               ],
             ),
           ),
