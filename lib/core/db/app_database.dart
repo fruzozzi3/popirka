@@ -1,9 +1,10 @@
 // lib/core/db/app_database.dart
 
+import 'dart:io';
+
 import 'package:path/path.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:sqflite/sqflite.dart';
-import 'dart:io';
 
 class AppDatabase {
   static final AppDatabase _instance = AppDatabase._internal();
@@ -21,9 +22,14 @@ class AppDatabase {
   Future<Database> _initDb() async {
     final Directory dir = await getApplicationDocumentsDirectory();
     final String path = join(dir.path, 'my_kopilka_v2.db'); // Новое имя файла БД
-    return await openDatabase(
+
+    return openDatabase(
       path,
       version: 1,
+      onConfigure: (db) async {
+        // ВАЖНО: без этого foreign key + cascade могут не применяться
+        await db.execute('PRAGMA foreign_keys = ON');
+      },
       onCreate: (db, version) async {
         // Таблица для целей накоплений
         await db.execute('''
@@ -34,7 +40,7 @@ class AppDatabase {
             created_at INTEGER NOT NULL
           );
         ''');
-        
+
         // Таблица для транзакций (пополнения и снятия)
         await db.execute('''
           CREATE TABLE transactions (
@@ -46,6 +52,10 @@ class AppDatabase {
             FOREIGN KEY (goal_id) REFERENCES goals (id) ON DELETE CASCADE
           );
         ''');
+
+        // Индексы для быстрых выборок
+        await db.execute('CREATE INDEX idx_transactions_goal_id ON transactions(goal_id);');
+        await db.execute('CREATE INDEX idx_transactions_created_at ON transactions(created_at);');
       },
     );
   }
