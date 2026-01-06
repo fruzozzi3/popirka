@@ -10,7 +10,7 @@ class SavingsRepository {
   // --- GOALS ---
   Future<int> addGoal(Goal goal) async {
     final db = await _appDatabase.database;
-    return await db.insert('goals', goal.toMap());
+    return db.insert('goals', goal.toMap());
   }
 
   Future<void> updateGoal(Goal goal) async {
@@ -20,15 +20,20 @@ class SavingsRepository {
 
   Future<void> deleteGoal(int id) async {
     final db = await _appDatabase.database;
-    await db.delete('goals', where: 'id = ?', whereArgs: [id]);
+
+    // Даже если CASCADE по какой-то причине не сработает — транзакции все равно удалятся
+    await db.transaction((txn) async {
+      await txn.delete('transactions', where: 'goal_id = ?', whereArgs: [id]);
+      await txn.delete('goals', where: 'id = ?', whereArgs: [id]);
+    });
   }
 
   Future<List<Goal>> getAllGoals() async {
     final db = await _appDatabase.database;
-    final List<Map<String, dynamic>> maps = await db.query('goals', orderBy: 'created_at DESC');
+    final maps = await db.query('goals', orderBy: 'created_at DESC');
     return List.generate(maps.length, (i) => Goal.fromMap(maps[i]));
   }
-  
+
   // --- TRANSACTIONS ---
   Future<void> addTransaction(Transaction transaction) async {
     final db = await _appDatabase.database;
@@ -46,13 +51,21 @@ class SavingsRepository {
     return res.map((e) => Transaction.fromMap(e)).toList();
   }
 
+  Future<List<Transaction>> getAllTransactions() async {
+    final db = await _appDatabase.database;
+    final res = await db.query('transactions', orderBy: 'created_at DESC');
+    return res.map((e) => Transaction.fromMap(e)).toList();
+  }
+
   Future<int> getCurrentSumForGoal(int goalId) async {
     final db = await _appDatabase.database;
     final res = await db.rawQuery(
       'SELECT SUM(amount) as total FROM transactions WHERE goal_id = ?',
       [goalId],
     );
-    final value = res.first['total'] as int?;
-    return value ?? 0;
+
+    // SQLite SUM может вернуть int/double/null
+    final num? value = res.first['total'] as num?;
+    return value?.toInt() ?? 0;
   }
 }
