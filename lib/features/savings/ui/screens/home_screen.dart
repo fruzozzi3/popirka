@@ -14,77 +14,74 @@ class HomeScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final vm = context.watch<SavingsViewModel>();
-    final settingsVM = context.watch<SettingsViewModel>();
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Scaffold(
-      body: CustomScrollView(
-        slivers: [
-          // Красивый AppBar с градиентом
-          SliverAppBar(
-            expandedHeight: 120,
-            pinned: true,
-            elevation: 0,
-            backgroundColor: Colors.transparent,
-            flexibleSpace: Container(
-              decoration: BoxDecoration(
-                gradient: isDark ? AppGradients.cardDark : AppGradients.primary,
-              ),
-              child: const FlexibleSpaceBar(
-                title: Text(
-                  'Мои Копилки',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.bold,
-                  ),
+      body: RefreshIndicator(
+        onRefresh: vm.fetchGoals,
+        child: CustomScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          slivers: [
+            SliverAppBar(
+              expandedHeight: 120,
+              pinned: true,
+              elevation: 0,
+              backgroundColor: Colors.transparent,
+              flexibleSpace: Container(
+                decoration: BoxDecoration(
+                  gradient: isDark ? AppGradients.cardDark : AppGradients.primary,
                 ),
-                centerTitle: true,
-              ),
-            ),
-            actions: [
-              IconButton(
-                icon: const Icon(Icons.settings, color: Colors.white),
-                onPressed: () {
-                  Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (_) => SettingsScreen(), // Removed 'const'
+                child: const FlexibleSpaceBar(
+                  title: Text(
+                    'Мои Копилки',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
                     ),
-                  );
-                },
-                tooltip: 'Настройки',
+                  ),
+                  centerTitle: true,
+                ),
               ),
-            ],
-          ),
-
-          // Контент
-          SliverPadding(
-            padding: const EdgeInsets.all(16),
-            sliver: vm.isLoading
-                ? const SliverFillRemaining(
-                    child: Center(child: CircularProgressIndicator()),
-                  )
-                : vm.goals.isEmpty
-                    ? _buildEmptyState(context, isDark)
-                    : SliverList(
-                        delegate: SliverChildListDelegate([
-                          // Общая статистика
-                          _buildOverallStatsCard(context, vm, isDark),
-                          const SizedBox(height: 16),
-
-                          // Заголовок целей
-                          _buildSectionHeader(context, 'Мои цели', vm.goals.length),
-                          const SizedBox(height: 8),
-
-                          // Список целей
-                          ...vm.goals.map((goal) => GoalCard(goal: goal)).toList(),
-
-                          const SizedBox(height: 80), // Отступ для FAB
-                        ]),
+              actions: [
+                IconButton(
+                  icon: const Icon(Icons.settings, color: Colors.white),
+                  onPressed: () {
+                    Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => const SettingsScreen(),
                       ),
-          ),
-        ],
-      ),
+                    );
+                  },
+                  tooltip: 'Настройки',
+                ),
+              ],
+            ),
 
+            SliverPadding(
+              padding: const EdgeInsets.all(16),
+              sliver: vm.isLoading
+                  ? const SliverFillRemaining(
+                      child: Center(child: CircularProgressIndicator()),
+                    )
+                  : vm.goals.isEmpty
+                      ? _buildEmptyState(context, isDark)
+                      : SliverList(
+                          delegate: SliverChildListDelegate([
+                            _buildOverallStatsCard(context, vm, isDark),
+                            const SizedBox(height: 16),
+
+                            _buildSectionHeader(context, 'Мои цели', vm.goals.length),
+                            const SizedBox(height: 8),
+
+                            ...vm.goals.map((goal) => GoalCard(goal: goal)).toList(),
+
+                            const SizedBox(height: 80),
+                          ]),
+                        ),
+            ),
+          ],
+        ),
+      ),
       floatingActionButton: _buildFAB(context, vm),
     );
   }
@@ -261,8 +258,8 @@ class HomeScreen extends StatelessWidget {
         Text(
           title,
           style: Theme.of(context).textTheme.titleLarge?.copyWith(
-            fontWeight: FontWeight.bold,
-          ),
+                fontWeight: FontWeight.bold,
+              ),
         ),
         if (count > 0)
           Container(
@@ -298,59 +295,92 @@ class HomeScreen extends StatelessWidget {
 
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Новая цель накопления'),
-        content: Form(
-          key: formKey,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextFormField(
-                controller: nameController,
-                decoration: const InputDecoration(
-                  labelText: 'Название цели',
-                  hintText: 'Например: Отпуск в Турции',
-                  prefixIcon: Icon(Icons.label),
-                ),
-                validator: (value) => value?.isEmpty ?? true ? 'Введите название' : null,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (dialogContext, setDialogState) {
+          bool isSubmitting = false;
+
+          Future<void> submit() async {
+            if (isSubmitting) return;
+            if (!formKey.currentState!.validate()) return;
+
+            setDialogState(() => isSubmitting = true);
+            try {
+              final name = nameController.text.trim();
+              final amount = int.parse(amountController.text);
+
+              await vm.addGoal(name, amount);
+
+              if (!context.mounted) return;
+              Navigator.of(dialogContext).pop();
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Цель создана')),
+              );
+            } catch (_) {
+              if (!context.mounted) return;
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Не удалось создать цель')),
+              );
+            } finally {
+              if (context.mounted) setDialogState(() => isSubmitting = false);
+            }
+          }
+
+          return AlertDialog(
+            title: const Text('Новая цель накопления'),
+            content: Form(
+              key: formKey,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextFormField(
+                    controller: nameController,
+                    decoration: const InputDecoration(
+                      labelText: 'Название цели',
+                      hintText: 'Например: Отпуск в Турции',
+                      prefixIcon: Icon(Icons.label),
+                    ),
+                    validator: (value) => (value?.trim().isEmpty ?? true) ? 'Введите название' : null,
+                  ),
+                  const SizedBox(height: 16),
+                  TextFormField(
+                    controller: amountController,
+                    decoration: const InputDecoration(
+                      labelText: 'Сумма цели',
+                      hintText: 'Например: 50000',
+                      prefixIcon: Icon(Icons.attach_money),
+                      suffixText: '₽',
+                    ),
+                    keyboardType: TextInputType.number,
+                    validator: (value) {
+                      if (value?.isEmpty ?? true) return 'Введите сумму';
+                      final parsed = int.tryParse(value!);
+                      if (parsed == null) return 'Неверный формат';
+                      if (parsed <= 0) return 'Сумма должна быть больше нуля';
+                      return null;
+                    },
+                    onFieldSubmitted: (_) => submit(),
+                  ),
+                ],
               ),
-              const SizedBox(height: 16),
-              TextFormField(
-                controller: amountController,
-                decoration: const InputDecoration(
-                  labelText: 'Сумма цели',
-                  hintText: 'Например: 50000',
-                  prefixIcon: Icon(Icons.attach_money),
-                  suffixText: '₽',
-                ),
-                keyboardType: TextInputType.number,
-                validator: (value) {
-                  if (value?.isEmpty ?? true) return 'Введите сумму';
-                  if (int.tryParse(value!) == null) return 'Неверный формат';
-                  if (int.parse(value) <= 0) return 'Сумма должна быть больше нуля';
-                  return null;
-                },
+            ),
+            actions: [
+              TextButton(
+                onPressed: isSubmitting ? null : () => Navigator.of(dialogContext).pop(),
+                child: const Text('Отмена'),
+              ),
+              ElevatedButton(
+                onPressed: isSubmitting ? null : submit,
+                child: isSubmitting
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Text('Создать'),
               ),
             ],
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Отмена'),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              if (formKey.currentState!.validate()) {
-                final name = nameController.text.trim();
-                final amount = int.parse(amountController.text);
-                vm.addGoal(name, amount);
-                Navigator.of(context).pop();
-              }
-            },
-            child: const Text('Создать'),
-          ),
-        ],
+          );
+        },
       ),
     );
   }
@@ -387,17 +417,14 @@ class GoalCard extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Заголовок
                 Text(
                   goal.name,
                   style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                    fontWeight: FontWeight.bold,
-                  ),
+                        fontWeight: FontWeight.bold,
+                      ),
                 ),
-
                 const SizedBox(height: 16),
 
-                // Мотивационное сообщение
                 if (motivationalMessage.isNotEmpty)
                   Container(
                     width: double.infinity,
@@ -421,17 +448,13 @@ class GoalCard extends StatelessWidget {
 
                 const SizedBox(height: 16),
 
-                // Прогресс
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(
-                          'Накоплено',
-                          style: Theme.of(context).textTheme.bodyMedium,
-                        ),
+                        Text('Накоплено', style: Theme.of(context).textTheme.bodyMedium),
                         Text(
                           currencyFormat.format(goal.currentAmount),
                           style: const TextStyle(
@@ -444,10 +467,7 @@ class GoalCard extends StatelessWidget {
                     Column(
                       crossAxisAlignment: CrossAxisAlignment.end,
                       children: [
-                        Text(
-                          'Цель',
-                          style: Theme.of(context).textTheme.bodyMedium,
-                        ),
+                        Text('Цель', style: Theme.of(context).textTheme.bodyMedium),
                         Text(
                           currencyFormat.format(goal.targetAmount),
                           style: Theme.of(context).textTheme.titleMedium,
@@ -459,16 +479,12 @@ class GoalCard extends StatelessWidget {
 
                 const SizedBox(height: 16),
 
-                // Прогресс бар
                 Column(
                   children: [
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        Text(
-                          '${(progress * 100).toStringAsFixed(1)}%',
-                          style: const TextStyle(fontWeight: FontWeight.w600),
-                        ),
+                        Text('${(progress * 100).toStringAsFixed(1)}%', style: const TextStyle(fontWeight: FontWeight.w600)),
                         if (!isCompleted)
                           Text(
                             'Осталось: ${currencyFormat.format(goal.targetAmount - goal.currentAmount)}',
@@ -502,7 +518,6 @@ class GoalCard extends StatelessWidget {
 
                 const SizedBox(height: 16),
 
-                // Кнопки быстрого пополнения
                 if (!isCompleted)
                   Wrap(
                     spacing: 8,
@@ -511,7 +526,20 @@ class GoalCard extends StatelessWidget {
                       return SizedBox(
                         height: 36,
                         child: OutlinedButton(
-                          onPressed: () => vm.addTransaction(goal.id!, amount),
+                          onPressed: () async {
+                            try {
+                              await vm.addTransaction(goal.id!, amount);
+                              if (!context.mounted) return;
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(content: Text('Добавлено +$amount ₽')),
+                              );
+                            } catch (_) {
+                              if (!context.mounted) return;
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(content: Text('Не удалось добавить сумму')),
+                              );
+                            }
+                          },
                           style: OutlinedButton.styleFrom(
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(18),
@@ -522,7 +550,7 @@ class GoalCard extends StatelessWidget {
                             ),
                           ),
                           child: Text(
-                            '+${amount} ₽',
+                            '+$amount ₽',
                             style: const TextStyle(fontWeight: FontWeight.w600),
                           ),
                         ),
